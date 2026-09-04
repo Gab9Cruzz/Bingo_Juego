@@ -1,0 +1,42 @@
+[project]
+name = "bingo"
+version = "0.1.0"
+description = "Aplicación de escritorio para montar y ejecutar bingos de 75 bolas."
+requires-python = ">=3.12"
+dependencies = [
+    "PySide6>=6.7,<7",
+    "reportlab>=4.2,<6",
+    "pillow>=10.4,<12",
+    "openpyxl>=3.1,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9",
+    "pytest-qt>=4.4,<5",
+    "ruff>=0.16,<1",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"bingo.persistencia.migraciones" = ["*.sql"]
+"bingo.i18n" = ["*.json"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "lento: pruebas de volumen, excluidas del bucle interno (pytest -m \"not lento\")",
+]
