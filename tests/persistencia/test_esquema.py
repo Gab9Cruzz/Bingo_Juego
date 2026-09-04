@@ -30,9 +30,7 @@ def test_evento_requiere_organizacion_existente(con: sqlite3.Connection) -> None
 
 
 def test_evento_estado_invalido_rechazado_por_check(con: sqlite3.Connection) -> None:
-    con.execute(
-        "INSERT INTO organizacion (nombre, creada_en) VALUES ('Org', 'y')"
-    )
+    con.execute("INSERT INTO organizacion (nombre, creada_en) VALUES ('Org', 'y')")
     org_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]
     with pytest.raises(sqlite3.IntegrityError):
         con.execute(

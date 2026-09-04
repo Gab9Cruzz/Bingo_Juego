@@ -132,8 +132,7 @@ def _verificar_base_a_medias(con: sqlite3.Connection, version: int) -> None:
     if version != 0:
         return
     fila = con.execute(
-        "SELECT COUNT(*) AS n FROM sqlite_master "
-        "WHERE type = 'table' AND name != 'schema_version'"
+        "SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name != 'schema_version'"
     ).fetchone()
     if fila and fila["n"] > 0:
         raise ErrorMigracion(
