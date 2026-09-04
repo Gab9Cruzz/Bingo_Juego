@@ -80,9 +80,7 @@ def crear(con: sqlite3.Connection, org: Organizacion) -> Organizacion:
 
 
 def obtener(con: sqlite3.Connection, organizacion_id: int) -> Organizacion | None:
-    fila = con.execute(
-        "SELECT * FROM organizacion WHERE id = ?", (organizacion_id,)
-    ).fetchone()
+    fila = con.execute("SELECT * FROM organizacion WHERE id = ?", (organizacion_id,)).fetchone()
     return _desde_fila(fila) if fila is not None else None
 
 

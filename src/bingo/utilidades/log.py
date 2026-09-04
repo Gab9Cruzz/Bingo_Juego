@@ -26,8 +26,14 @@ class _FormateadorUTC(logging.Formatter):
     converter = staticmethod(__import__("time").gmtime)
 
 
-def configurar_log(ruta_log: Path, *, ruta_bd: Path | None = None) -> logging.Logger:
-    """Configura el logger raíz `bingo`. Idempotente dentro del mismo proceso."""
+def configurar_log(ruta_log: Path) -> logging.Logger:
+    """Configura el logger raíz `bingo`. Idempotente dentro del mismo proceso.
+
+    No escribe la línea de arranque: eso lo hace `registrar_arranque()`,
+    llamado por separado una vez que se conoce la ruta de la base (después de
+    aplicar migraciones). Separar las dos cosas evita escribir la línea de
+    arranque dos veces si el llamante configura el log más de una vez.
+    """
     global _configurado
     logger = logging.getLogger("bingo")
 
@@ -51,13 +57,21 @@ def configurar_log(ruta_log: Path, *, ruta_bd: Path | None = None) -> logging.Lo
 
         _configurado = True
 
-    logger.info(
+    return logger
+
+
+def registrar_arranque(ruta_bd: Path) -> None:
+    """Escribe la versión de la app, la de Python y la ruta de la base en la
+    primera línea de cada arranque. Sin esto, un reporte de error a tres
+    semanas vista no se puede reconstruir. No va a `auditoria` (enmienda
+    E7b): eso es el rastro del negocio, esto es ciclo de vida de la app.
+    """
+    logging.getLogger("bingo").info(
         "Arranque · bingo %s · Python %s · base=%s",
         __version__,
         platform.python_version(),
-        ruta_bd if ruta_bd is not None else "(no abierta aún)",
+        ruta_bd,
     )
-    return logger
 
 
 def reiniciar_para_pruebas() -> None:

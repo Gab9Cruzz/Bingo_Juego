@@ -15,9 +15,7 @@ def test_primera_aplicacion_crea_esquema(bingo_home) -> None:
         assert migraciones.version_actual(con) == 1
         tablas = {
             r[0]
-            for r in con.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
+            for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
         assert {"organizacion", "evento", "carton", "schema_version"} <= tablas
     finally:
@@ -111,9 +109,7 @@ def test_atomicidad_real_migracion_a_medias_no_sobrevive(
 
         tablas = {
             r[0]
-            for r in con.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
+            for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
         assert "b" not in tablas, "la tabla de la migración fallida no debería sobrevivir"
         assert migraciones.version_actual(con) == 1, "schema_version no debió ganar fila"
