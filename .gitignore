@@ -14,3 +14,4 @@ medios/
 *.egg-info/
 .coverage
 htmlcov/
+CLAUDE.md
