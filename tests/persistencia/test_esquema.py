@@ -48,7 +48,8 @@ def test_carton_estado_invalido_rechazado_por_check(con: sqlite3.Connection) -> 
     )
     evento_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]
     con.execute(
-        "INSERT INTO lote (evento_id, cantidad, semilla, generado_en) VALUES (?, 1, 's', 'y')",
+        "INSERT INTO lote (evento_id, cantidad, prefijo_codigo, semilla, generado_en) "
+        "VALUES (?, 1, 'P', 's', 'y')",
         (evento_id,),
     )
     lote_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]
@@ -68,7 +69,8 @@ def test_carton_unique_codigo_y_firma(con: sqlite3.Connection) -> None:
     )
     evento_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]
     con.execute(
-        "INSERT INTO lote (evento_id, cantidad, semilla, generado_en) VALUES (?, 1, 's', 'y')",
+        "INSERT INTO lote (evento_id, cantidad, prefijo_codigo, semilla, generado_en) "
+        "VALUES (?, 1, 'P', 's', 'y')",
         (evento_id,),
     )
     lote_id = con.execute("SELECT last_insert_rowid()").fetchone()[0]

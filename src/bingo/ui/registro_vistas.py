@@ -52,6 +52,12 @@ def _vista_datos_evento(con: Any, evento: Any) -> QWidget:
     return VistaDatosEvento(con, evento)
 
 
+def _vista_cartones(con: Any, evento: Any) -> QWidget:
+    from bingo.ui.vistas.vista_cartones import VistaCartones
+
+    return VistaCartones(con, evento)
+
+
 REGISTRO_NAVEGACION_GLOBAL: list[EntradaNavegacionGlobal] = [
     EntradaNavegacionGlobal("nav.eventos", _vista_eventos),
     EntradaNavegacionGlobal("nav.organizaciones", _vista_organizaciones),
@@ -60,7 +66,7 @@ REGISTRO_NAVEGACION_GLOBAL: list[EntradaNavegacionGlobal] = [
 
 SECCIONES_ESPACIO_EVENTO: list[EntradaSeccionEvento] = [
     EntradaSeccionEvento("espacio_evento.seccion.datos", _vista_datos_evento),
-    EntradaSeccionEvento("espacio_evento.seccion.cartones", None),
+    EntradaSeccionEvento("espacio_evento.seccion.cartones", _vista_cartones),
     EntradaSeccionEvento("espacio_evento.seccion.plantilla", None),
     EntradaSeccionEvento("espacio_evento.seccion.compradores", None),
     EntradaSeccionEvento("espacio_evento.seccion.rondas", None),

@@ -138,6 +138,24 @@ def principal(argv: list[str] | None = None) -> int:
 
     registrar_arranque(ruta_bd())
 
+    # Barrido de lotes huérfanos (fase 2): corre antes de mostrar cualquier
+    # ventana, para que un lote a medias por un cierre inesperado del proceso
+    # anterior nunca llegue a pintarse en el listado de cartones. Un fallo
+    # aquí no debe impedir arrancar: se registra en el log y se sigue, igual
+    # que un lote corrupto no bloquea la limpieza del resto (ver
+    # servicio_cartones.limpiar_lotes_huerfanos).
+    import logging
+
+    from bingo.servicios import servicio_cartones
+    from bingo.utilidades.errores import ErrorBingo
+
+    try:
+        servicio_cartones.limpiar_lotes_huerfanos(con)
+    except ErrorBingo as error:
+        logging.getLogger("bingo").warning(
+            "No se pudo completar el barrido de lotes huérfanos: %s", error.detalle
+        )
+
     from bingo.ui.tema import aplicar_tema_operador
 
     aplicar_tema_operador(app)

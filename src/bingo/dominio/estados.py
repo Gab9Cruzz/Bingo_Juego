@@ -17,6 +17,14 @@ TRANSICIONES_EVENTO: Mapping[str, set[str]] = {
     "finalizado": set(),
 }
 
+TRANSICIONES_CARTON: Mapping[str, set[str]] = {
+    "generado": {"impreso", "anulado"},
+    "impreso": {"entregado", "anulado"},
+    "entregado": {"vendido", "anulado"},
+    "vendido": {"anulado"},
+    "anulado": set(),
+}
+
 
 def puede_transicionar(transiciones: Mapping[str, set[str]], actual: str, nuevo: str) -> bool:
     return nuevo in transiciones.get(actual, set())

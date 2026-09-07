@@ -115,3 +115,20 @@ Formato: **qué** · por qué · esfuerzo (humano / CC) · prioridad · depende 
   §16.3 del documento técnico: licencias y registro doble en Qt y ReportLab. La
   fase 1 empaqueta dos familias de licencia abierta y ofrece un combo cerrado.
   Esfuerzo: M / S · Depende de: fase 3.
+
+## Añadidos por `/gstack-autoplan` sobre `docs/Fase_2/Contrato_Fase2.md` (2026-09-04)
+
+- **Exportar el listado de cartones a Excel/PDF desde la vista de la Fase 2.**
+  Candidato de expansión (E5) surgido en la revisión CEO: sería cómodo tenerlo ya
+  en la vista de consulta de cartones, pero es exactamente el trabajo de
+  impresión (fase 3) y conciliación (fase 4) — construirlo ahora duplicaría
+  esfuerzo cuando esas fases lleguen con su propio motor de render/Excel.
+  Esfuerzo: M / S · Depende de: fase 3 (impresión) y fase 4 (conciliación).
+
+- **`servicio_cartones.regenerar_lote(con, lote_id)`.** Decisión de gusto D1 del
+  gate final de la Fase 2, resuelta por el usuario: es la misma función que
+  `generar_lote` inyectando `random.Random(lote.semilla)` en vez de
+  `secrets.SystemRandom()`, pero sin ningún llamador real hasta que se pierda un
+  PDF y haga falta reproducir un lote exacto — se implementa cuando la fase 3
+  (impresión) tenga ese caso de uso real que la ejercite de punta a punta.
+  Esfuerzo: S / S · Depende de: fase 3.

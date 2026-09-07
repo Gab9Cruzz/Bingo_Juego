@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from bingo.dominio.estados import TRANSICIONES_EVENTO, puede_transicionar
+from bingo.dominio.estados import TRANSICIONES_CARTON, TRANSICIONES_EVENTO, puede_transicionar
 from bingo.dominio.modelos import Evento, Organizacion
 from bingo.persistencia import repo_evento, repo_organizacion
 from bingo.servicios import servicio_eventos
@@ -37,3 +37,36 @@ def test_servicio_cambiar_estado_valida_aplica(con: sqlite3.Connection) -> None:
     ev = repo_evento.crear(con, Evento(organizacion_id=org.id, nombre="Bingo"))
     servicio_eventos.cambiar_estado(con, ev.id, "preparado")
     assert repo_evento.obtener(con, ev.id).estado == "preparado"
+
+
+@pytest.mark.parametrize(
+    ("actual", "nuevo"),
+    [
+        ("generado", "impreso"),
+        ("generado", "anulado"),
+        ("impreso", "entregado"),
+        ("impreso", "anulado"),
+        ("entregado", "vendido"),
+        ("entregado", "anulado"),
+        ("vendido", "anulado"),
+    ],
+)
+def test_transiciones_carton_validas(actual: str, nuevo: str) -> None:
+    assert puede_transicionar(TRANSICIONES_CARTON, actual, nuevo)
+
+
+@pytest.mark.parametrize(
+    ("actual", "nuevo"),
+    [
+        ("generado", "vendido"),  # salta pasos
+        ("impreso", "generado"),  # hacia atrás
+        ("vendido", "generado"),
+        ("anulado", "generado"),
+    ],
+)
+def test_transiciones_carton_invalidas(actual: str, nuevo: str) -> None:
+    assert not puede_transicionar(TRANSICIONES_CARTON, actual, nuevo)
+
+
+def test_carton_anulado_es_terminal() -> None:
+    assert TRANSICIONES_CARTON["anulado"] == set()

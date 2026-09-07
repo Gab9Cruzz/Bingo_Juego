@@ -48,9 +48,16 @@ CREATE TABLE lote (
     id                INTEGER PRIMARY KEY,
     evento_id         INTEGER NOT NULL REFERENCES evento(id),
     cantidad          INTEGER NOT NULL,
+    prefijo_codigo    TEXT NOT NULL,
     semilla           TEXT NOT NULL,
-    generado_en       TEXT NOT NULL
+    generado_en       TEXT NOT NULL,
+    completado_en     TEXT,       -- NULL = en curso o huérfano (fase 2, revisión Eng #5);
+                                   -- se fija en la misma transacción que cierra el lote,
+                                   -- nunca se infiere del texto de auditoria.
+    UNIQUE (evento_id, prefijo_codigo)
 );
+
+CREATE INDEX idx_lote_evento ON lote(evento_id);
 
 CREATE TABLE carton (
     id                INTEGER PRIMARY KEY,

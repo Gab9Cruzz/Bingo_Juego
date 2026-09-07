@@ -7,8 +7,10 @@ recibiera `Row`, terminaría indexando por nombre de columna y el acoplamiento
 al esquema se filtraría igual que si el SQL viviera fuera de `persistencia/`.
 
 Entidades con comportamiento propio (generación de cartones, evaluación de
-patrones, extracción de bolas) viven en su propio módulo de `dominio/` en las
-fases siguientes (`carton.py`, `patron.py`, `bombo.py`), no aquí.
+patrones, extracción de bolas) viven en su propio módulo de `dominio/`
+(`carton.py`, `patron.py`, `bombo.py`, fases siguientes), no aquí. `Lote` y
+`Carton` (fase 2) son solo registro — el álgebra del cartón opera sobre
+`list[list[int | None]]`, no sobre `Carton` de este módulo.
 """
 
 from __future__ import annotations
@@ -56,3 +58,25 @@ class RegistroAuditoria:
     evento_id: int | None = None
     momento: str = ""
     detalle: str | None = None
+
+
+@dataclass(slots=True)
+class Lote:
+    evento_id: int
+    cantidad: int
+    prefijo_codigo: str
+    semilla: str
+    id: int | None = None
+    generado_en: str = ""
+    completado_en: str | None = None  # NULL = en curso o huérfano (fase 2)
+
+
+@dataclass(slots=True)
+class Carton:
+    evento_id: int
+    lote_id: int
+    codigo: str
+    numeros: str  # 24 números, orden canónico, coma-separado (dominio/carton.py)
+    firma: str
+    id: int | None = None
+    estado: str = "generado"
