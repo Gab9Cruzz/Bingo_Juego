@@ -7,9 +7,9 @@ import pytest
 from factorias import crear_evento, crear_organizacion, crear_patron, crear_ronda
 
 from bingo.dominio.modelos import Ronda
-from bingo.persistencia import repo_ronda
+from bingo.persistencia import repo_auditoria, repo_ronda
 from bingo.servicios import servicio_rondas
-from bingo.utilidades.errores import ErrorValidacion
+from bingo.utilidades.errores import ErrorNoEncontrado, ErrorTransicionInvalida, ErrorValidacion
 
 
 def _evento(con: sqlite3.Connection):
@@ -140,3 +140,62 @@ def test_eliminar_ronda_borra_imagen_huerfana(con: sqlite3.Connection, tmp_path:
 
     servicio_rondas.eliminar_ronda(con, ronda.id)
     assert not Path(ruta).exists()
+
+
+def test_reabrir_ronda_pasa_a_en_curso_y_limpia_cerrada_en(con: sqlite3.Connection) -> None:
+    evento = _evento(con)
+    patron = crear_patron(con)
+    ronda = crear_ronda(con, evento.id, patron.id, orden=1, estado="cerrada")
+    repo_ronda.actualizar_cierre(con, ronda.id, estado="cerrada", cerrada_en="2026-01-01T00:00:00Z")
+
+    servicio_rondas.reabrir_ronda(con, ronda.id)
+
+    recargada = repo_ronda.obtener(con, ronda.id)
+    assert recargada.estado == "en_curso"
+    assert recargada.cerrada_en is None
+
+
+def test_reabrir_ronda_invalida_el_acta_si_tenia(con: sqlite3.Connection) -> None:
+    """Hallazgo E-16/C6: un acta ya en manos de la organización no puede
+    seguir pareciendo válida sobre una ronda que se sigue jugando."""
+    evento = _evento(con)
+    patron = crear_patron(con)
+    ronda = crear_ronda(con, evento.id, patron.id, orden=1, estado="cerrada")
+    repo_ronda.actualizar_acta(
+        con, ronda.id, acta_hash="abc123", acta_generada_en="2026-01-01T00:00:00Z"
+    )
+
+    servicio_rondas.reabrir_ronda(con, ronda.id)
+
+    recargada = repo_ronda.obtener(con, ronda.id)
+    assert recargada.acta_hash is None
+    assert recargada.acta_generada_en is None
+    acciones = [r.accion for r in repo_auditoria.listar_por_evento(con, evento.id)]
+    assert "sorteo.ronda_reabierta" in acciones
+    assert "sorteo.acta_invalidada" in acciones
+
+
+def test_reabrir_ronda_sin_acta_no_registra_invalidacion(con: sqlite3.Connection) -> None:
+    evento = _evento(con)
+    patron = crear_patron(con)
+    ronda = crear_ronda(con, evento.id, patron.id, orden=1, estado="cerrada")
+
+    servicio_rondas.reabrir_ronda(con, ronda.id)
+
+    acciones = [r.accion for r in repo_auditoria.listar_por_evento(con, evento.id)]
+    assert "sorteo.acta_invalidada" not in acciones
+
+
+def test_reabrir_ronda_en_curso_falla(con: sqlite3.Connection) -> None:
+    """`TRANSICIONES_RONDA` no permite `en_curso -> en_curso`: reabrir solo
+    tiene sentido sobre una ronda de verdad cerrada."""
+    evento = _evento(con)
+    patron = crear_patron(con)
+    ronda = crear_ronda(con, evento.id, patron.id, orden=1, estado="en_curso")
+    with pytest.raises(ErrorTransicionInvalida):
+        servicio_rondas.reabrir_ronda(con, ronda.id)
+
+
+def test_reabrir_ronda_inexistente_falla(con: sqlite3.Connection) -> None:
+    with pytest.raises(ErrorNoEncontrado):
+        servicio_rondas.reabrir_ronda(con, 999)

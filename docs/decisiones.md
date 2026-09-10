@@ -273,3 +273,11 @@ el plan completo:
   pedir voces (`availableVoices()` solo devuelve las del locale activo).
   Sin motor o sin voces para el idioma elegido, se desactiva sola sin
   lanzar.
+- **Corrección real encontrada al implementar 4.11 (actas): `VistaSorteo`
+  no tenía ninguna forma de moverse a la ronda 2 tras cerrar la 1, ni de
+  reabrir una cerrada.** Solo mostraba "la ronda en juego, o si no la
+  primera pendiente" — cerrar la única ronda visible dejaba la vista sin
+  salida. Se añadió `_selector_ronda` (todas las rondas del evento) y
+  `servicio_rondas.reabrir_ronda` (hallazgo V5/E-16): cerrar avanza sola a
+  la siguiente pendiente, y una ronda cerrada se puede volver a abrir desde
+  el selector, invalidando el acta si ya se había generado.

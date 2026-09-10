@@ -28,6 +28,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -54,7 +55,7 @@ from bingo.persistencia import (
     repo_patron,
     repo_ronda,
 )
-from bingo.servicios import servicio_ganadores
+from bingo.servicios import servicio_ganadores, servicio_rondas
 from bingo.ui import sonido
 from bingo.ui.atajos import ATAJOS
 from bingo.ui.dialogos import FranjaError, confirmar
@@ -65,7 +66,7 @@ from bingo.ui.transmision.ventana_transmision import VentanaTransmision
 from bingo.ui.widgets.cuadricula_carton import CuadriculaCarton
 from bingo.ui.widgets.rejilla_patron import RejillaPatron
 from bingo.ui.widgets.tablero_setenta_cinco import TableroSetentaYCinco
-from bingo.utilidades.errores import ErrorBingo
+from bingo.utilidades.errores import ErrorBingo, ErrorReanudacion
 
 _DURACION_BLOQUEO_DOBLE_CLIC_MS = 400
 
@@ -99,9 +100,17 @@ class VistaSorteo(QWidget):
         self._etiqueta_vacio.setObjectName("etiquetaSecundaria")
 
         # -- Cabecera: ronda / patrón / premio -----------------------------
+        # `_selector_ronda` es la manera de moverse entre rondas (elegir la
+        # siguiente al cerrar una, o volver a una cerrada para reabrirla) —
+        # sin esto no habría cómo llegar a la ronda 2 tras cerrar la 1.
         self._etiqueta_ronda = QLabel()
+        self._selector_ronda = QComboBox()
+        self._actualizando_selector = False
+        self._selector_ronda.currentIndexChanged.connect(self._al_seleccionar_ronda)
         self._rejilla_patron = RejillaPatron(solo_lectura=True)
         self._etiqueta_premio = QLabel()
+        self._boton_reabrir_ronda = QPushButton()
+        self._boton_reabrir_ronda.clicked.connect(self._reabrir_ronda)
 
         # -- Zona A ----------------------------------------------------------
         self._etiqueta_numero = QLabel("—")
@@ -210,8 +219,10 @@ class VistaSorteo(QWidget):
 
         cabecera = QHBoxLayout()
         cabecera.addWidget(self._etiqueta_ronda)
+        cabecera.addWidget(self._selector_ronda)
         cabecera.addWidget(self._rejilla_patron)
         cabecera.addWidget(self._etiqueta_premio)
+        cabecera.addWidget(self._boton_reabrir_ronda)
         cabecera.addStretch()
 
         distribucion = QVBoxLayout(self)
@@ -285,6 +296,7 @@ class VistaSorteo(QWidget):
         rondas = repo_ronda.listar_por_evento(self._con, self._evento.id)
         if not rondas:
             self._mostrar_vacio(True)
+            self._cargar_lista_rondas()
             return
         self._mostrar_vacio(False)
 
@@ -298,9 +310,10 @@ class VistaSorteo(QWidget):
                 self._motor.reanudar_ronda(self._con, ronda_en_juego.id)
             except ErrorBingo as error:
                 self._franja.mostrar_error(error)
-        self._sincronizar_con_ronda(
+        objetivo = (
             ronda_en_juego if ronda_en_juego is not None else self._primera_ronda_pendiente(rondas)
         )
+        self._cargar_lista_rondas(seleccionar_id=objetivo.id if objetivo is not None else None)
 
     def _primera_ronda_pendiente(self, rondas: list) -> object | None:
         pendientes = [r for r in rondas if r.estado == "pendiente"]
@@ -315,8 +328,44 @@ class VistaSorteo(QWidget):
             self._boton_cerrar_ronda,
             self._campo_codigo,
             self._tablero,
+            self._selector_ronda,
         ):
             widget.setEnabled(not vacio)
+
+    def _cargar_lista_rondas(self, *, seleccionar_id: int | None = None) -> None:
+        """Única puerta de entrada para poblar `_selector_ronda` y
+        sincronizar la vista con lo que quede seleccionado — así "iniciar",
+        "cerrar" y "reabrir" no duplican la lógica de qué ronda mostrar
+        después."""
+        rondas = repo_ronda.listar_por_evento(self._con, self._evento.id)
+        self._actualizando_selector = True
+        try:
+            self._selector_ronda.clear()
+            indice_a_seleccionar = 0
+            for indice, ronda in enumerate(rondas):
+                etiqueta = f"{ronda.nombre} — {t(f'sorteo.estado_ronda.{ronda.estado}')}"
+                self._selector_ronda.addItem(etiqueta, ronda.id)
+                if seleccionar_id is not None and ronda.id == seleccionar_id:
+                    indice_a_seleccionar = indice
+            if rondas:
+                self._selector_ronda.setCurrentIndex(indice_a_seleccionar)
+        finally:
+            self._actualizando_selector = False
+
+        if not rondas:
+            self._sincronizar_con_ronda(None)
+            return
+        ronda_id_actual = self._selector_ronda.currentData()
+        ronda = next((r for r in rondas if r.id == ronda_id_actual), rondas[0])
+        self._sincronizar_con_ronda(ronda)
+
+    def _al_seleccionar_ronda(self, indice: int) -> None:
+        if self._actualizando_selector or indice < 0:
+            return
+        ronda_id = self._selector_ronda.itemData(indice)
+        if ronda_id is None:
+            return
+        self._sincronizar_con_ronda(repo_ronda.obtener(self._con, ronda_id))
 
     def _sincronizar_con_ronda(self, ronda: object | None) -> None:
         self._ronda_actual = ronda
@@ -324,14 +373,12 @@ class VistaSorteo(QWidget):
         self._grupo_a_una_bola.setVisible(False)
         self._grupo_ganadores.setVisible(False)
         if ronda is None:
-            self._etiqueta_ronda.setText(t("sorteo.sin_ronda"))
             self._rejilla_patron.setVisible(False)
             self._etiqueta_premio.clear()
             self._actualizar_botones_estado("pendiente")
             return
 
         self._patron_actual = repo_patron.obtener(self._con, ronda.patron_id)
-        self._etiqueta_ronda.setText(ronda.nombre)
         self._etiqueta_premio.setText(ronda.premio_nombre or "")
         if self._patron_actual is not None and self._patron_actual.mascaras:
             self._rejilla_patron.setVisible(True)
@@ -358,13 +405,25 @@ class VistaSorteo(QWidget):
 
     def _actualizar_botones_estado(self, estado: str) -> None:
         self._etiqueta_estado_ronda.setText(t(f"sorteo.estado_ronda.{estado}"))
-        self._boton_extraer.setEnabled(estado == "en_curso")
-        self._boton_iniciar.setEnabled(estado == "pendiente")
-        self._boton_pausar.setEnabled(estado in ("en_curso", "pausada"))
+        # El motor solo puede tener UNA ronda viva a la vez (un bombo, un
+        # EstadoPartida): ver una ronda distinta a la que está cargada en
+        # memoria es de solo lectura hasta que esa otra se cierre.
+        es_la_ronda_del_motor = (
+            self._ronda_actual is not None and self._motor.ronda_id == self._ronda_actual.id
+        )
+        self._boton_extraer.setEnabled(estado == "en_curso" and es_la_ronda_del_motor)
+        self._boton_iniciar.setEnabled(estado == "pendiente" and not self._motor.hay_ronda_en_juego)
+        self._boton_pausar.setEnabled(estado in ("en_curso", "pausada") and es_la_ronda_del_motor)
         self._boton_pausar.setText(
             t("sorteo.accion.pausar") if estado == "en_curso" else t("sorteo.accion.reanudar")
         )
-        self._boton_cerrar_ronda.setEnabled(estado in ("en_curso", "pausada"))
+        self._boton_cerrar_ronda.setEnabled(
+            estado in ("en_curso", "pausada") and es_la_ronda_del_motor
+        )
+        self._boton_reabrir_ronda.setVisible(estado == "cerrada")
+        self._boton_reabrir_ronda.setEnabled(
+            estado == "cerrada" and not self._motor.hay_ronda_en_juego
+        )
 
     # -- ciclo de vida de la ronda -------------------------------------------
 
@@ -377,7 +436,7 @@ class VistaSorteo(QWidget):
             self._franja.mostrar_error(error)
             return
         self._puente.establecer_modo_automatico(False)
-        self._refrescar_ronda_actual()
+        self._cargar_lista_rondas(seleccionar_id=self._ronda_actual.id)
 
     def _pausar_o_reanudar(self) -> None:
         if self._ronda_actual is None:
@@ -390,7 +449,7 @@ class VistaSorteo(QWidget):
         except ErrorBingo as error:
             self._franja.mostrar_error(error)
             return
-        self._refrescar_ronda_actual()
+        self._cargar_lista_rondas(seleccionar_id=self._ronda_actual.id)
 
     def _cerrar_ronda(self) -> None:
         if self._ronda_actual is None:
@@ -403,25 +462,62 @@ class VistaSorteo(QWidget):
             self, t("sorteo.confirmar_cerrar.titulo"), t("sorteo.confirmar_cerrar.mensaje")
         ):
             return
+        ronda_cerrada = self._ronda_actual
         try:
-            self._motor.cerrar_ronda(self._con, self._ronda_actual.id)
+            self._motor.cerrar_ronda(self._con, ronda_cerrada.id)
         except ErrorBingo as error:
             self._franja.mostrar_error(error)
             return
-        self._franja.mostrar_exito(
-            t("sorteo.exito.ronda_cerrada", nombre=self._ronda_actual.nombre)
-        )
-        self._refrescar_ronda_actual()
-
-    def _refrescar_ronda_actual(self) -> None:
-        if self._ronda_actual is None:
-            return
-        ronda = repo_ronda.obtener(self._con, self._ronda_actual.id)
-        self._sincronizar_con_ronda(ronda)
+        self._franja.mostrar_exito(t("sorteo.exito.ronda_cerrada", nombre=ronda_cerrada.nombre))
+        # Avanza a la siguiente ronda pendiente si hay una — sin esto no
+        # habría manera de llegar a la ronda 2 salvo abriendo el selector a
+        # mano.
+        rondas = repo_ronda.listar_por_evento(self._con, self._evento.id)
+        siguiente = self._primera_ronda_pendiente(rondas)
+        self._cargar_lista_rondas(seleccionar_id=siguiente.id if siguiente else ronda_cerrada.id)
 
     def _al_cambiar_ronda(self, ronda_id: int, estado: str) -> None:
         if self._ronda_actual is not None and self._ronda_actual.id == ronda_id:
-            self._refrescar_ronda_actual()
+            self._cargar_lista_rondas(seleccionar_id=ronda_id)
+
+    # -- reapertura (hallazgo V5, decisión D13) -------------------------------
+
+    def _reabrir_ronda(self) -> None:
+        if self._ronda_actual is None:
+            return
+        ronda = self._ronda_actual
+        mensaje = (
+            t("sorteo.confirmar_reabrir.mensaje_con_acta")
+            if ronda.acta_hash is not None
+            else t("sorteo.confirmar_reabrir.mensaje")
+        )
+        if not confirmar(self, t("sorteo.confirmar_reabrir.titulo"), mensaje):
+            return
+        try:
+            servicio_rondas.reabrir_ronda(self._con, ronda.id)
+            self._motor.reanudar_ronda(self._con, ronda.id)
+        except ErrorReanudacion as error:
+            # DU-12: modal terminal incluso en modo vivo — con el detalle
+            # de por qué, y la opción explícita de forzar (queda en
+            # auditoría) o cancelar.
+            if confirmar(
+                self,
+                t("sorteo.reanudacion_incoherente.titulo"),
+                t(error.clave_i18n, **error.parametros),
+            ):
+                try:
+                    self._motor.reanudar_ronda(self._con, ronda.id, forzar=True)
+                except ErrorBingo as error_forzado:
+                    self._franja.mostrar_error(error_forzado)
+                    return
+            else:
+                self._cargar_lista_rondas(seleccionar_id=ronda.id)
+                return
+        except ErrorBingo as error:
+            self._franja.mostrar_error(error)
+            return
+        self._franja.mostrar_info(t("sorteo.exito.ronda_reabierta", nombre=ronda.nombre))
+        self._cargar_lista_rondas(seleccionar_id=ronda.id)
 
     # -- extracción -----------------------------------------------------------
 
@@ -661,6 +757,8 @@ class VistaSorteo(QWidget):
         self._boton_extraer.setText(t("sorteo.accion.extraer"))
         self._boton_iniciar.setText(t("sorteo.accion.iniciar_ronda"))
         self._boton_cerrar_ronda.setText(t("sorteo.accion.cerrar_ronda"))
+        self._boton_reabrir_ronda.setText(t("sorteo.accion.reabrir_ronda"))
+        self._etiqueta_ronda.setText(t("sorteo.cabecera.ronda"))
         self._campo_codigo.setPlaceholderText(t("sorteo.buscador.placeholder"))
         self._boton_consultar.setText(t("sorteo.accion.consultar"))
         self._boton_registrar_reclamo.setText(t("sorteo.accion.registrar_reclamo"))
@@ -668,7 +766,8 @@ class VistaSorteo(QWidget):
         self._boton_transmision.setText(t("sorteo.accion.mostrar_transmision"))
         self._grupo_a_una_bola.setTitle(t("sorteo.a_una_bola.titulo_generico"))
         self._grupo_ganadores.setTitle(t("sorteo.ganadores.titulo_generico"))
-        if self._ronda_actual is not None:
-            self._actualizar_botones_estado(self._ronda_actual.estado)
-        else:
-            self._etiqueta_ronda.setText(t("sorteo.sin_ronda"))
+        # Reconstruye los textos de estado de cada entrada del selector
+        # (cambian con el idioma) preservando la selección actual.
+        self._cargar_lista_rondas(
+            seleccionar_id=self._ronda_actual.id if self._ronda_actual is not None else None
+        )

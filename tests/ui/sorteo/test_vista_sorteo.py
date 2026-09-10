@@ -184,6 +184,86 @@ def test_boton_transmision_crea_y_cierra_la_ventana(
     assert vista._ventana_transmision._cerrada  # noqa: SLF001
 
 
+def test_selector_lista_todas_las_rondas_del_evento(
+    qapp, con: sqlite3.Connection, evento_creado, lote_creado
+) -> None:
+    i18n.cargar("es")
+    patron = crear_patron(con)
+    crear_ronda(con, evento_creado.id, patron.id, orden=1, nombre="R1")
+    crear_ronda(con, evento_creado.id, patron.id, orden=2, nombre="R2")
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento_creado, espacio)
+
+    assert vista._selector_ronda.count() == 2  # noqa: SLF001
+
+
+def test_cerrar_ronda_avanza_al_siguiente_pendiente(
+    qapp, con: sqlite3.Connection, evento_creado, lote_creado, monkeypatch
+) -> None:
+    """Sin esto no habría manera de llegar a la ronda 2 tras cerrar la 1."""
+    i18n.cargar("es")
+    monkeypatch.setattr("bingo.ui.sorteo.vista_sorteo.confirmar", lambda *a, **k: True)
+    patron = crear_patron(con, mascaras=[mascara([(0, 0)])])
+    carton = crear_carton(con, evento_creado.id, lote_creado.id, semilla=1, estado="vendido")
+    crear_comprador(con, carton.id)
+    r1 = crear_ronda(con, evento_creado.id, patron.id, orden=1, nombre="R1")
+    r2 = crear_ronda(con, evento_creado.id, patron.id, orden=2, nombre="R2")
+
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento_creado, espacio)
+    vista._cargar_lista_rondas(seleccionar_id=r1.id)  # noqa: SLF001
+    vista._iniciar_ronda()  # noqa: SLF001
+    vista._cerrar_ronda()  # noqa: SLF001
+
+    assert vista._ronda_actual.id == r2.id  # noqa: SLF001
+
+
+def test_boton_reabrir_visible_solo_en_ronda_cerrada(
+    qapp, con: sqlite3.Connection, evento_creado, lote_creado, monkeypatch
+) -> None:
+    i18n.cargar("es")
+    monkeypatch.setattr("bingo.ui.sorteo.vista_sorteo.confirmar", lambda *a, **k: True)
+    patron = crear_patron(con, mascaras=[mascara([(0, 0)])])
+    carton = crear_carton(con, evento_creado.id, lote_creado.id, semilla=1, estado="vendido")
+    crear_comprador(con, carton.id)
+    ronda = crear_ronda(con, evento_creado.id, patron.id)
+
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento_creado, espacio)
+    assert vista._boton_reabrir_ronda.isHidden()  # noqa: SLF001
+
+    vista._iniciar_ronda()  # noqa: SLF001
+    vista._cerrar_ronda()  # noqa: SLF001
+
+    assert not vista._boton_reabrir_ronda.isHidden()  # noqa: SLF001
+    assert vista._boton_reabrir_ronda.isEnabled()  # noqa: SLF001
+    assert repo_ronda.obtener(con, ronda.id).estado == "cerrada"
+
+
+def test_reabrir_ronda_reconstruye_el_motor_y_conserva_marcado(
+    qapp, con: sqlite3.Connection, evento_creado, lote_creado, monkeypatch
+) -> None:
+    i18n.cargar("es")
+    monkeypatch.setattr("bingo.ui.sorteo.vista_sorteo.confirmar", lambda *a, **k: True)
+    patron = crear_patron(con, mascaras=[mascara([(0, 0)])])
+    carton = crear_carton(con, evento_creado.id, lote_creado.id, semilla=1, estado="vendido")
+    crear_comprador(con, carton.id)
+    ronda = crear_ronda(con, evento_creado.id, patron.id)
+
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento_creado, espacio)
+    vista._iniciar_ronda()  # noqa: SLF001
+    vista._al_pulsar_extraer()  # noqa: SLF001
+    vista._cerrar_ronda()  # noqa: SLF001
+    assert not vista._motor.hay_ronda_en_juego  # noqa: SLF001
+
+    vista._reabrir_ronda()  # noqa: SLF001
+
+    assert repo_ronda.obtener(con, ronda.id).estado == "en_curso"
+    assert vista._motor.hay_ronda_en_juego  # noqa: SLF001
+    assert vista._boton_extraer.isEnabled()  # noqa: SLF001
+
+
 def test_modo_vivo_delega_en_espacio_evento(
     qapp, con: sqlite3.Connection, evento_creado, lote_creado
 ) -> None:

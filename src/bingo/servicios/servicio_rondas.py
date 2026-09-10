@@ -18,10 +18,11 @@ from pathlib import Path
 
 from bingo.config.ajustes import LADO_MAX_LOGO
 from bingo.config.rutas import dir_medios_evento
+from bingo.dominio.estados import TRANSICIONES_RONDA, puede_transicionar
 from bingo.dominio.modelos import Ronda
 from bingo.persistencia import repo_auditoria, repo_carton, repo_patron, repo_ronda
 from bingo.persistencia.conexion import transaccion
-from bingo.utilidades.errores import ErrorNoEncontrado, ErrorValidacion
+from bingo.utilidades.errores import ErrorNoEncontrado, ErrorTransicionInvalida, ErrorValidacion
 from bingo.utilidades.imagenes import validar_y_normalizar
 
 _TIPOS_PREMIO = ("efectivo", "bien")
@@ -159,3 +160,40 @@ def validar_evento_listo(con: sqlite3.Connection, evento_id: int) -> list[Pendie
         pendientes.append(PendienteEvento("rondas.pendiente.sin_vendidos", bloqueante=False))
 
     return pendientes
+
+
+def reabrir_ronda(con: sqlite3.Connection, ronda_id: int) -> None:
+    """`cerrada -> en_curso` (hallazgo V5, plan de la fase 5): cerrar una
+    ronda por error en directo tiene que tener deshacer, y el alcance §6.6
+    promete retomar un bingo otro día desde la ronda pendiente — sin esta
+    transición esa promesa sería falsa.
+
+    Solo cambia el estado y audita; **no** toca el `MotorSorteo` en
+    memoria — quien llama a esto (la vista, con el motor que vive en
+    `EspacioEvento`, hallazgo S5-3) debe seguir con
+    `MotorSorteo.reanudar_ronda()` para volver a tener la partida viva.
+
+    Si la ronda ya tenía acta generada, invalida el hash (hallazgo
+    E-16/C6, tarea 4.11): un acta ya en manos de la organización no puede
+    seguir pareciendo válida sobre una ronda que se sigue jugando. La
+    confirmación explícita de que esto es lo que se quiere hacer es
+    responsabilidad del llamante, no de este servicio.
+    """
+    ronda = repo_ronda.obtener(con, ronda_id)
+    if ronda is None:
+        raise ErrorNoEncontrado("error.no_encontrado", parametros={"id": ronda_id})
+    if not puede_transicionar(TRANSICIONES_RONDA, ronda.estado, "en_curso"):
+        raise ErrorTransicionInvalida(
+            "error.transicion_invalida", parametros={"actual": ronda.estado, "nuevo": "en_curso"}
+        )
+    tenia_acta = ronda.acta_hash is not None
+    with transaccion(con):
+        repo_ronda.actualizar_cierre(con, ronda_id, estado="en_curso", cerrada_en=None)
+        repo_auditoria.registrar(
+            con, ronda.evento_id, "sorteo.ronda_reabierta", detalle=str(ronda_id)
+        )
+        if tenia_acta:
+            repo_ronda.actualizar_acta(con, ronda_id, acta_hash=None, acta_generada_en=None)
+            repo_auditoria.registrar(
+                con, ronda.evento_id, "sorteo.acta_invalidada", detalle=str(ronda_id)
+            )
