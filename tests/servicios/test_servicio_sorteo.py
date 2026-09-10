@@ -176,6 +176,20 @@ def test_reabrir_ronda_cerrada_es_valido_segun_transiciones_ronda(
     assert recargada.cerrada_en is None
 
 
+def test_conectar_reemplaza_callbacks_tras_construir(con: sqlite3.Connection, escenario) -> None:
+    """Hallazgo S5-3: `EspacioEvento` construye el motor antes de que exista
+    el puente, y el puente se conecta después con `conectar()`."""
+    ronda, *_ = escenario
+    motor = MotorSorteo(rng=_RngSecuencial())
+    motor.iniciar_ronda(con, ronda.id)
+
+    extraidas: list = []
+    motor.conectar(al_extraer=extraidas.append)
+    motor.extraer(con)
+
+    assert len(extraidas) == 1
+
+
 def test_iniciar_ronda_no_reabre_una_cerrada(con: sqlite3.Connection, escenario) -> None:
     """`iniciar_ronda` es solo el primer arranque: reabrir pasa por
     `reanudar_ronda`, que sí reproduce la historia de extracciones. Si

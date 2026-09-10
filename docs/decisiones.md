@@ -217,3 +217,20 @@ el plan completo:
   tratar la parte anterior al `|` como código tecleado — eso dejaría pasar
   `"A-0142|00000000"` sin que el HMAC validara nada. El QR (`LONGITUD_HMAC`
   de 32 bits) es un antifaltas de tipeo, no una prueba de posesión.
+- **El panel de ganadores detectados nunca confirma nada por su cuenta.**
+  `ganadores_detectados` solo pinta la lista; la confirmación (`unico` /
+  `reparto` / `rechazado`) ocurre al registrar un reclamo desde el
+  buscador de código o al resolver un empate desde el diálogo — nunca en el
+  instante de la detección, porque el contrato exige un hueco real de
+  reclamo (estado `HAY_CARTON_GANADOR` de la fase 5, tarea 4.9) antes de
+  revelar quién ganó.
+- **`EspacioEvento` es el dueño de `MotorSorteo` (hallazgo S5-3).** Vive ahí,
+  no en `VistaSorteo`: cambiar de sección del riel a mitad de ronda no
+  destruye la partida. Las secciones reciben `(con, evento, espacio)` desde
+  la fase 5 (antes `(con, evento)`); las que no son Sorteo ignoran el
+  tercer argumento.
+- **DU-11: los dos botones que cierran `EspacioEvento` exigen confirmación
+  explícita con una ronda `en_curso` o `pausada`.** Antes se conectaban
+  directo a la señal `cerrado`, sin aviso — con una partida en vivo,
+  cerrar la pantalla no debería sentirse como un clic reversible por
+  accidente aunque los datos ya estén a salvo en la base.

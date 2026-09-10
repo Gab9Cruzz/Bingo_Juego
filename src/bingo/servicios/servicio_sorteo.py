@@ -91,6 +91,14 @@ def _cargar_cartones_elegibles(con: sqlite3.Connection, evento_id: int) -> list[
 
 
 class MotorSorteo:
+    """`al_confirmar_ganador` no está entre los parámetros del constructor
+    aunque exista en la tabla de señales del §6.4: la confirmación de un
+    ganador la ejecuta `servicios/servicio_ganadores.confirmar`, una llamada
+    directa de la vista, no un evento que el motor dispare por su cuenta.
+    `ui/sorteo/puente_sorteo.py` emite `ganador_confirmado` él mismo después
+    de llamar a ese servicio.
+    """
+
     def __init__(
         self,
         *,
@@ -98,7 +106,6 @@ class MotorSorteo:
         al_extraer: CallbackExtraer | None = None,
         al_detectar_a_una_bola: CallbackAUnaBola | None = None,
         al_detectar_ganadores: CallbackGanadores | None = None,
-        al_confirmar_ganador: CallbackConfirmarGanador | None = None,
         al_cambiar_ronda: CallbackCambiarRonda | None = None,
         al_fallo_log: CallbackFalloLog | None = None,
     ) -> None:
@@ -106,7 +113,6 @@ class MotorSorteo:
         self._al_extraer = al_extraer
         self._al_detectar_a_una_bola = al_detectar_a_una_bola
         self._al_detectar_ganadores = al_detectar_ganadores
-        self._al_confirmar_ganador = al_confirmar_ganador
         self._al_cambiar_ronda = al_cambiar_ronda
         self._al_fallo_log = al_fallo_log
 
@@ -123,6 +129,25 @@ class MotorSorteo:
         # Hallazgo C2: TODOS los carton_id ya persistidos en `ganador` para
         # esta ronda, anulados y rechazados incluidos.
         self._ya_detectados: set[int] = set()
+
+    def conectar(
+        self,
+        *,
+        al_extraer: CallbackExtraer | None = None,
+        al_detectar_a_una_bola: CallbackAUnaBola | None = None,
+        al_detectar_ganadores: CallbackGanadores | None = None,
+        al_cambiar_ronda: CallbackCambiarRonda | None = None,
+        al_fallo_log: CallbackFalloLog | None = None,
+    ) -> None:
+        """Reemplaza los callbacks después de construir el motor. Existe
+        para que `EspacioEvento` (dueño del motor, hallazgo S5-3) pueda
+        crearlo antes de que exista `ui/sorteo/puente_sorteo.py`, y el
+        puente se conecte después sin construir una segunda instancia."""
+        self._al_extraer = al_extraer
+        self._al_detectar_a_una_bola = al_detectar_a_una_bola
+        self._al_detectar_ganadores = al_detectar_ganadores
+        self._al_cambiar_ronda = al_cambiar_ronda
+        self._al_fallo_log = al_fallo_log
 
     # -- consultas ---------------------------------------------------------
 
