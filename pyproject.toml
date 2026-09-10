@@ -31,6 +31,7 @@ where = ["src"]
 "bingo.persistencia.migraciones" = ["*.sql"]
 "bingo.i18n" = ["*.json"]
 "bingo.recursos.fuentes" = ["*/*.ttf", "*/*.txt"]
+"bingo.recursos.sonidos" = ["*.wav"]
 
 [tool.ruff]
 line-length = 100

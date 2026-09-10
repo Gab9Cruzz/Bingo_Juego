@@ -262,3 +262,14 @@ el plan completo:
   `Signal(list)` — falla en silencio (un aviso, no una excepción) y deja la
   ventana escuchando igual. La bandera es robusta independientemente de esa
   limitación.
+- **`ui/sonido.py` es un solo módulo (hallazgo S5-2), no un paquete.**
+  `Efectos`, `Musica` y la locución comparten ciclo de vida. Ninguna
+  instancia su objeto de Qt (`QSoundEffect`/`QMediaPlayer`/`QTextToSpeech`)
+  cuando está desactivada — evita el aviso de consola de instanciar audio
+  en un equipo sin tarjeta de sonido, y lo hace comprobable sin hardware
+  real.
+- **Locución: TTS del sistema por defecto, con carpeta pregrabada que lo
+  sustituye si está completa (decisión D5).** El locale se fija *antes* de
+  pedir voces (`availableVoices()` solo devuelve las del locale activo).
+  Sin motor o sin voces para el idioma elegido, se desactiva sola sin
+  lanzar.

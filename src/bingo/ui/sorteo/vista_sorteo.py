@@ -55,6 +55,7 @@ from bingo.persistencia import (
     repo_ronda,
 )
 from bingo.servicios import servicio_ganadores
+from bingo.ui import sonido
 from bingo.ui.atajos import ATAJOS
 from bingo.ui.dialogos import FranjaError, confirmar
 from bingo.ui.sorteo.dialogo_empate import DialogoEmpate
@@ -81,6 +82,13 @@ class VistaSorteo(QWidget):
         self._puente = PuenteSorteo(self._motor, con, parent=self)
         self._ronda_actual = None
         self._patron_actual = None
+        self._ultimo_numero: int | None = None
+
+        tema_inicial = TemaDashboard.desde_json(evento.tema_json)
+        self._efectos = sonido.Efectos(activado=tema_inicial.juego.sonido_bola)
+        self._locucion = sonido.crear_proveedor(
+            tema_inicial.juego.idioma_voz, activado=tema_inicial.juego.voz
+        )
 
         self._franja = FranjaError()
 
@@ -249,6 +257,10 @@ class VistaSorteo(QWidget):
         self._atajo_confirmar.activated.connect(self._confirmar_ganador_seleccionado)
         self._atajo_modo_vivo = _atajo("sorteo.modo_vivo")
         self._atajo_modo_vivo.activated.connect(self._boton_modo_vivo.toggle)
+        self._atajo_repetir_locucion = _atajo("sorteo.repetir_locucion")
+        self._atajo_repetir_locucion.activated.connect(
+            self._repetir_locucion_si_no_hay_foco_en_texto
+        )
 
     def _foco_en_texto(self) -> bool:
         return isinstance(QApplication.focusWidget(), QLineEdit)
@@ -259,6 +271,12 @@ class VistaSorteo(QWidget):
         if self._foco_en_texto():
             return
         self._al_pulsar_extraer()
+
+    def _repetir_locucion_si_no_hay_foco_en_texto(self) -> None:
+        if self._foco_en_texto():
+            return
+        if self._locucion is not None and self._ultimo_numero is not None:
+            self._locucion.decir(self._ultimo_numero)
 
     # -- estado inicial y estado vacío (hallazgo S5-16) ----------------------
 
@@ -327,6 +345,7 @@ class VistaSorteo(QWidget):
         if numeros_salidos:
             self._tablero.marcar(numeros_salidos[-1], es_ultima=True)
             self._etiqueta_numero.setText(str(numeros_salidos[-1]))
+            self._ultimo_numero = numeros_salidos[-1]
         self._actualizar_contador()
         self._actualizar_botones_estado(ronda.estado)
 
@@ -421,7 +440,11 @@ class VistaSorteo(QWidget):
     def _al_extraer(self, extraccion) -> None:
         self._tablero.marcar(extraccion.numero, es_ultima=True)
         self._etiqueta_numero.setText(str(extraccion.numero))
+        self._ultimo_numero = extraccion.numero
         self._actualizar_contador()
+        self._efectos.reproducir("bola")
+        if self._locucion is not None:
+            self._locucion.decir(extraccion.numero)
 
     def _al_actualizar_a_una_bola(self, cartones: list) -> None:
         self._lista_a_una_bola.clear()
@@ -448,6 +471,7 @@ class VistaSorteo(QWidget):
             return
         self._grupo_ganadores.setVisible(True)
         self._grupo_ganadores.setTitle(t("sorteo.ganadores.titulo", cantidad=len(cartones)))
+        self._efectos.reproducir("ganador")
         mapa_compradores = repo_comprador.mapa_por_evento(self._con, self._evento.id)
         for carton in cartones:
             comprador = mapa_compradores.get(carton.carton_id)
@@ -630,6 +654,7 @@ class VistaSorteo(QWidget):
 
     def _al_fallar_log(self, detalle: str) -> None:
         self._franja.mostrar(t("sorteo.aviso.log_fallo"), nivel="info")
+        self._efectos.reproducir("alerta")
 
     def retraducir(self) -> None:
         self._etiqueta_vacio.setText(t("sorteo.vacio.mensaje"))
