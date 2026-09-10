@@ -187,6 +187,48 @@ def generar_lote(
     return repo_lote.obtener(con, lote.id) or lote
 
 
+def regenerar_lote(
+    con: sqlite3.Connection,
+    lote_id: int,
+    *,
+    al_progresar: Callable[[int, int], None] | None = None,
+    debe_cancelar: Callable[[], bool] | None = None,
+) -> Lote:
+    """Reproduce un lote perdido o corrupto con exactamente los mismos
+    cartones, inyectando `Random(lote.semilla)` en vez de una semilla nueva.
+
+    Resuelve el caso de uso que `TODOS.md` dejó anotado: "se implementa
+    cuando la fase 3 tenga ese caso de uso real" — el PDF de un lote se
+    perdió o se corrompió y hay que reimprimir sin vender cartones distintos
+    la segunda vez. Borra el lote y sus cartones (mismo camino que la
+    cancelación de `generar_lote`) y vuelve a generarlo con la misma
+    `semilla`, `prefijo_codigo` y `cantidad`: como `generar_carton` extrae
+    determinísticamente a partir de `rng`, el resultado es bit a bit el mismo
+    lote. No toca `generar_lote` en sí.
+    """
+    original = repo_lote.obtener(con, lote_id)
+    if original is None:
+        raise ErrorNoEncontrado("error.no_encontrado", parametros={"id": lote_id})
+
+    with transaccion(con):
+        repo_carton.eliminar_por_lote(con, lote_id)
+        repo_lote.eliminar(con, lote_id)
+        repo_auditoria.registrar(
+            con, original.evento_id, "lote.regenerado_borrado", detalle=original.prefijo_codigo
+        )
+
+    return generar_lote(
+        con,
+        original.evento_id,
+        original.cantidad,
+        original.prefijo_codigo,
+        al_progresar=al_progresar,
+        debe_cancelar=debe_cancelar,
+        rng=Random(original.semilla),
+        semilla=original.semilla,
+    )
+
+
 def limpiar_lotes_huerfanos(con: sqlite3.Connection) -> int:
     """Corre al arrancar la app (antes de mostrar cualquier ventana). Cada
     lote huérfano se limpia en su propia transacción — una fila corrupta no
@@ -211,7 +253,19 @@ def limpiar_lotes_huerfanos(con: sqlite3.Connection) -> int:
 def cambiar_estado_carton(con: sqlite3.Connection, carton_id: int, nuevo_estado: str) -> None:
     """Valida la transición contra `dominio.estados` antes de escribir, igual
     que `servicio_eventos.cambiar_estado`.
+
+    `-> vendido` está bloqueado aquí a propósito (fase 4, hallazgo E-A5): la
+    regla de elegibilidad estricta (`Proyecto_Alcance.md` §6, decisión UC-1)
+    exige que todo cartón vendido tenga una fila `comprador` viva, y ese
+    camino genérico de cambio de estado no la crea. La única vía a `vendido`
+    es `servicio_compradores` (importación, alta manual o venta por rango),
+    que crea el comprador y el cambio de estado en la misma transacción.
     """
+    if nuevo_estado == "vendido":
+        raise ErrorTransicionInvalida(
+            "cartones.error.vendido_solo_por_comprador", parametros={"id": carton_id}
+        )
+
     actual = repo_carton.obtener(con, carton_id)
     if actual is None:
         raise ErrorNoEncontrado("error.no_encontrado", parametros={"id": carton_id})

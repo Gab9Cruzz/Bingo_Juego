@@ -156,6 +156,18 @@ def principal(argv: list[str] | None = None) -> int:
             "No se pudo completar el barrido de lotes huérfanos: %s", error.detalle
         )
 
+    # Precarga de los patrones del sistema (fase 4, TODOS.md P2): idempotente,
+    # y un fallo aquí tampoco debe impedir arrancar — el catálogo de patrones
+    # queda vacío hasta el siguiente arranque, no la app entera.
+    from bingo.servicios import servicio_patrones
+
+    try:
+        servicio_patrones.asegurar_patrones_sistema(con)
+    except ErrorBingo as error:
+        logging.getLogger("bingo").warning(
+            "No se pudo precargar el catálogo de patrones del sistema: %s", error.detalle
+        )
+
     from bingo.ui.tema import aplicar_tema_operador
 
     aplicar_tema_operador(app)

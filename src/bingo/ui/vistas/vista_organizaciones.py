@@ -71,6 +71,13 @@ class BotonColor(QPushButton):
         self.setText(self.color)
         self.setStyleSheet(f"background-color: {self.color}; color: white;")
 
+    def establecer_color(self, color: str) -> None:
+        """Setter público (fase 3, `ui/vistas/vista_plantilla.py`): carga un
+        color guardado sin pasar por el diálogo de selección.
+        """
+        self.color = color
+        self._actualizar()
+
     def _elegir(self) -> None:
         from PySide6.QtGui import QColor
 

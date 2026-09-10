@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import sqlite3
 
+from bingo.dominio import firma as dominio_firma
 from bingo.dominio.estados import TRANSICIONES_EVENTO, puede_transicionar
 from bingo.dominio.modelos import Evento
 from bingo.persistencia import repo_auditoria, repo_evento
@@ -45,3 +46,41 @@ def cambiar_estado(con: sqlite3.Connection, evento_id: int, nuevo: str) -> None:
         repo_auditoria.registrar(
             con, evento_id, "evento.cambio_estado", detalle=f"{actual.estado} -> {nuevo}"
         )
+
+
+def marcar_preparado(con: sqlite3.Connection, evento_id: int) -> None:
+    """`borrador -> preparado` con guarda (ANEXO A, hallazgo R9 del plan de
+    la fase 4): sin rondas con patrón y premio, "preparado" no significa
+    nada. Import perezoso de `servicio_rondas` para no crear un ciclo de
+    módulo (`servicio_rondas` no importa `servicio_eventos`).
+    """
+    from bingo.servicios import servicio_rondas
+
+    pendientes = [p for p in servicio_rondas.validar_evento_listo(con, evento_id) if p.bloqueante]
+    if pendientes:
+        raise ErrorValidacion(
+            "eventos.error.no_listo_para_preparar", parametros={"cantidad": len(pendientes)}
+        )
+    cambiar_estado(con, evento_id, "preparado")
+
+
+def asegurar_clave_evento(con: sqlite3.Connection, evento_id: int) -> str:
+    """Devuelve `evento.clave_evento`, generándola y persistiéndola la primera
+    vez que se pide (fase 3, dominio/firma.py). Idempotente: si ya existe, la
+    devuelve tal cual, sin caso especial para quien la llama.
+
+    Es el único punto que decide *cuándo* nace la clave —
+    `repo_evento.actualizar_clave` solo escribe. `servicio_impresion` la llama
+    antes de renderizar el primer PDF de un evento.
+    """
+    actual = repo_evento.obtener(con, evento_id)
+    if actual is None:
+        raise ErrorNoEncontrado("error.no_encontrado", parametros={"id": evento_id})
+    if actual.clave_evento:
+        return actual.clave_evento
+
+    clave = dominio_firma.generar_clave_evento()
+    with transaccion(con):
+        repo_evento.actualizar_clave(con, evento_id, clave)
+        repo_auditoria.registrar(con, evento_id, "evento.clave_generada")
+    return clave

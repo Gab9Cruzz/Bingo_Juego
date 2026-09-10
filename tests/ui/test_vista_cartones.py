@@ -17,9 +17,11 @@ from factorias import crear_evento, crear_organizacion
 from PySide6.QtCore import QObject, Signal
 
 from bingo import i18n
+from bingo.dominio.modelos import Lote
+from bingo.persistencia import repo_carton, repo_lote
 from bingo.servicios import servicio_cartones
 from bingo.ui.vistas import vista_cartones as modulo_vista
-from bingo.ui.vistas.vista_cartones import VistaCartones
+from bingo.ui.vistas.vista_cartones import FormularioImprimir, VistaCartones
 from bingo.utilidades.errores import ErrorValidacion
 
 
@@ -178,3 +180,93 @@ def test_retraducir_no_toca_texto_tecleado_en_busqueda(qapp, con, bingo_home) ->
     i18n.cargar("es")
 
     assert vista._campo_busqueda.text() == "algo que el operador escribió"
+
+
+# --- Impresión de PDF (contrato de la fase 3, §3.5) -------------------------
+
+
+def test_formulario_imprimir_solo_lista_lotes_completos(qapp, con, bingo_home) -> None:
+    con, evento = _preparar(con)
+    servicio_cartones.generar_lote(con, evento.id, 3, "COMPLETO", semilla="s1")
+    huerfano = repo_lote.crear(
+        con, Lote(evento_id=evento.id, cantidad=5, prefijo_codigo="HUERFANO", semilla="s2")
+    )
+    assert huerfano.completado_en is None
+
+    dialogo = FormularioImprimir(con, evento)
+    etiquetas = [dialogo._combo_lote.itemText(i) for i in range(dialogo._combo_lote.count())]
+    assert etiquetas == ["COMPLETO (3)"]
+
+
+def test_lanzar_tarea_imprimir_deshabilita_ambos_botones(
+    qapp, con, bingo_home, monkeypatch
+) -> None:
+    con, evento = _preparar(con)
+    servicio_cartones.generar_lote(con, evento.id, 5, "IMP", semilla="s1")
+    lote = repo_lote.listar_por_evento(con, evento.id)[0]
+    vista = VistaCartones(con, evento)
+
+    tarea = _TareaFalsa()
+    monkeypatch.setattr(modulo_vista, "Tarea", lambda *_a, **_k: tarea)
+
+    vista._lanzar_tarea_imprimir(lote.id, bingo_home / "salida")
+
+    assert tarea.iniciada
+    assert vista._boton_generar.isHidden()
+    assert vista._boton_imprimir.isHidden()
+    assert not vista._boton_cancelar_tarea.isHidden()
+
+
+def test_impresion_terminada_ofrece_marcar_impreso(qapp, con, bingo_home, monkeypatch) -> None:
+    con, evento = _preparar(con)
+    servicio_cartones.generar_lote(con, evento.id, 3, "MARK", semilla="s1")
+    lote = repo_lote.listar_por_evento(con, evento.id)[0]
+    vista = VistaCartones(con, evento)
+
+    tarea = _TareaFalsa()
+    monkeypatch.setattr(modulo_vista, "Tarea", lambda *_a, **_k: tarea)
+    monkeypatch.setattr(modulo_vista, "confirmar", lambda *_a, **_k: True)
+    vista._lanzar_tarea_imprimir(lote.id, bingo_home / "salida")
+
+    rutas = [bingo_home / "salida" / "MARK_parte_01.pdf"]
+    tarea.terminado.emit(rutas)
+
+    assert repo_carton.contar_por_estado(con, evento.id) == {"impreso": 3}
+    assert not vista._boton_imprimir.isHidden()
+
+
+def test_impresion_terminada_sin_confirmar_no_marca(qapp, con, bingo_home, monkeypatch) -> None:
+    con, evento = _preparar(con)
+    servicio_cartones.generar_lote(con, evento.id, 3, "NOMARK", semilla="s1")
+    lote = repo_lote.listar_por_evento(con, evento.id)[0]
+    vista = VistaCartones(con, evento)
+
+    tarea = _TareaFalsa()
+    monkeypatch.setattr(modulo_vista, "Tarea", lambda *_a, **_k: tarea)
+    monkeypatch.setattr(modulo_vista, "confirmar", lambda *_a, **_k: False)
+    vista._lanzar_tarea_imprimir(lote.id, bingo_home / "salida")
+
+    rutas = [bingo_home / "salida" / "NOMARK_parte_01.pdf"]
+    tarea.terminado.emit(rutas)
+
+    assert repo_carton.contar_por_estado(con, evento.id) == {"generado": 3}
+
+
+def test_impresion_cancelada_no_lanza_ni_ofrece_marcar(qapp, con, bingo_home, monkeypatch) -> None:
+    con, evento = _preparar(con)
+    servicio_cartones.generar_lote(con, evento.id, 3, "CANC", semilla="s1")
+    lote = repo_lote.listar_por_evento(con, evento.id)[0]
+    vista = VistaCartones(con, evento)
+
+    llamadas_confirmar = []
+    tarea = _TareaFalsa()
+    monkeypatch.setattr(modulo_vista, "Tarea", lambda *_a, **_k: tarea)
+    monkeypatch.setattr(
+        modulo_vista, "confirmar", lambda *a, **k: llamadas_confirmar.append(1) or True
+    )
+    vista._lanzar_tarea_imprimir(lote.id, bingo_home / "salida")
+
+    tarea.terminado.emit([])  # cancelado a mitad: sin rutas generadas
+
+    assert not llamadas_confirmar
+    assert vista._franja._etiqueta.text() == "Generación cancelada"

@@ -9,6 +9,7 @@ pero sí monitores de tamaños distintos).
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
@@ -33,13 +35,14 @@ from PySide6.QtWidgets import (
 
 from bingo import i18n
 from bingo.config.ajustes import LIMITE_CARTONES_POR_LOTE, LONGITUD_MAXIMA_PREFIJO_CODIGO
+from bingo.config.rutas import dir_impresos_evento
 from bingo.dominio.carton import carton_desde_orden_canonico
 from bingo.dominio.modelos import Carton, Evento
 from bingo.i18n import t
 from bingo.persistencia import repo_carton, repo_lote
 from bingo.persistencia.conexion import abrir_conexion, cerrar_conexion
-from bingo.servicios import servicio_cartones
-from bingo.ui.dialogos import FranjaError
+from bingo.servicios import servicio_cartones, servicio_impresion
+from bingo.ui.dialogos import FranjaError, confirmar
 from bingo.ui.tarea import Tarea
 from bingo.ui.widgets.cuadricula_carton import CuadriculaCarton
 from bingo.utilidades.errores import ErrorBingo
@@ -72,6 +75,118 @@ def _generar_lote_en_hilo(
         )
     finally:
         cerrar_conexion(con)
+
+
+def _imprimir_lote_en_hilo(
+    evento_id: int,
+    lote_id: int,
+    carpeta: Path,
+    *,
+    al_progresar: Any,
+    debe_cancelar: Any,
+) -> list[Path]:
+    """Mismo convenio que `_generar_lote_en_hilo`: conexión propia, abierta y
+    cerrada dentro de la llamada (fase 3, contrato §3.5).
+    """
+    con = abrir_conexion()
+    try:
+        return servicio_impresion.generar_pdf_lote(
+            con,
+            evento_id,
+            lote_id,
+            carpeta,
+            al_progresar=al_progresar,
+            debe_cancelar=debe_cancelar,
+        )
+    finally:
+        cerrar_conexion(con)
+
+
+class FormularioImprimir(QDialog):
+    """Modal de un paso: elegir qué lote imprimir y a qué carpeta (contrato
+    de la fase 3, §3.5). Solo lista lotes completos (`completado_en` no
+    nulo): un lote a medio generar o huérfano no tiene cartones consistentes
+    que imprimir.
+    """
+
+    def __init__(self, con: Any, evento: Evento, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._con = con
+        self._evento = evento
+        self.setMinimumWidth(420)
+        self.resultado: tuple[int, Path] | None = None
+
+        self._combo_lote = QComboBox()
+        for lote in repo_lote.listar_por_evento(con, evento.id):
+            if lote.completado_en is None:
+                continue
+            cantidad = repo_carton.contar_por_lote(con, lote.id)
+            self._combo_lote.addItem(f"{lote.prefijo_codigo} ({cantidad})", lote.id)
+
+        self._campo_carpeta = QLineEdit(str(dir_impresos_evento(evento.id)))
+        self._campo_carpeta.setReadOnly(True)
+        self._boton_carpeta = QPushButton()
+        self._boton_carpeta.clicked.connect(self._elegir_carpeta)
+        fila_carpeta = QHBoxLayout()
+        fila_carpeta.addWidget(self._campo_carpeta, stretch=1)
+        fila_carpeta.addWidget(self._boton_carpeta)
+
+        self._etiqueta_lote = QLabel()
+        self._etiqueta_carpeta = QLabel()
+        self._error_general = QLabel()
+        self._error_general.setStyleSheet("color: #e5484d;")
+        self._error_general.setWordWrap(True)
+        self._error_general.setVisible(False)
+
+        self._formulario = QFormLayout()
+        self._formulario.addRow(self._etiqueta_lote, self._combo_lote)
+        self._formulario.addRow(self._etiqueta_carpeta, fila_carpeta)
+        self._formulario.addRow(self._error_general)
+
+        self._botones = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
+        )
+        self._botones.accepted.connect(self._guardar)
+        self._botones.rejected.connect(self.reject)
+
+        distribucion = QVBoxLayout(self)
+        distribucion.addLayout(self._formulario)
+        distribucion.addWidget(self._botones)
+
+        self.retraducir()
+        i18n.registrar_para_retraduccion(self)
+
+    def _elegir_carpeta(self) -> None:
+        carpeta = QFileDialog.getExistingDirectory(
+            self, t("cartones.imprimir.accion.elegir_carpeta"), self._campo_carpeta.text()
+        )
+        if carpeta:
+            self._campo_carpeta.setText(carpeta)
+
+    def _guardar(self) -> None:
+        self._error_general.setVisible(False)
+        if self._combo_lote.count() == 0:
+            self._error_general.setText(t("cartones.imprimir.error.sin_lotes"))
+            self._error_general.setVisible(True)
+            return
+        lote_id = self._combo_lote.currentData()
+        carpeta = Path(self._campo_carpeta.text().strip())
+        if not str(carpeta):
+            self._error_general.setText(t("cartones.imprimir.error.carpeta_vacia"))
+            self._error_general.setVisible(True)
+            return
+        self.resultado = (lote_id, carpeta)
+        self.accept()
+
+    def retraducir(self) -> None:
+        self.setWindowTitle(t("cartones.imprimir.titulo"))
+        self._etiqueta_lote.setText(t("cartones.imprimir.campo.lote"))
+        self._etiqueta_carpeta.setText(t("cartones.imprimir.campo.carpeta"))
+        self._boton_carpeta.setText(t("cartones.imprimir.accion.elegir_carpeta"))
+        self._botones.button(QDialogButtonBox.StandardButton.Save).setText(
+            t("cartones.imprimir.accion.generar")
+        )
+        self._botones.button(QDialogButtonBox.StandardButton.Cancel).setText(t("comun.cancelar"))
 
 
 class FormularioGenerarLote(QDialog):
@@ -205,6 +320,7 @@ class VistaCartones(QWidget):
         self._evento = evento
         self._tarea: Tarea | None = None
         self._marca_de_tiempo_progreso: float | None = None
+        self._lote_recien_impreso_id: int | None = None
 
         # --- Cabecera: resumen + acción ---
         self._etiquetas_resumen: dict[str | None, QLabel] = {}
@@ -213,9 +329,11 @@ class VistaCartones(QWidget):
         self._boton_generar = QPushButton()
         self._boton_generar.setObjectName("primario")
         self._boton_generar.clicked.connect(self._abrir_formulario_generar)
+        self._boton_imprimir = QPushButton()
+        self._boton_imprimir.clicked.connect(self._abrir_formulario_imprimir)
         self._boton_cancelar_tarea = QPushButton()
         self._boton_cancelar_tarea.setVisible(False)
-        self._boton_cancelar_tarea.clicked.connect(self._cancelar_generacion)
+        self._boton_cancelar_tarea.clicked.connect(self._cancelar_tarea)
 
         self._barra_progreso = QProgressBar()
         self._barra_progreso.setVisible(False)
@@ -225,6 +343,7 @@ class VistaCartones(QWidget):
 
         fila_accion = QHBoxLayout()
         fila_accion.addWidget(self._boton_generar)
+        fila_accion.addWidget(self._boton_imprimir)
         fila_accion.addWidget(self._barra_progreso, stretch=1)
         fila_accion.addWidget(self._etiqueta_velocidad)
         fila_accion.addWidget(self._boton_cancelar_tarea)
@@ -353,14 +472,7 @@ class VistaCartones(QWidget):
         self._lanzar_tarea(cantidad, prefijo)
 
     def _lanzar_tarea(self, cantidad: int, prefijo: str) -> None:
-        self._boton_generar.setEnabled(False)
-        self._boton_generar.setVisible(False)
-        self._boton_cancelar_tarea.setVisible(True)
-        self._barra_progreso.setVisible(True)
-        self._barra_progreso.setRange(0, cantidad)
-        self._barra_progreso.setValue(0)
-        self._etiqueta_velocidad.setVisible(True)
-        self._marca_de_tiempo_progreso = time.monotonic()
+        self._preparar_controles_de_tarea(cantidad)
 
         self._tarea = Tarea(_generar_lote_en_hilo, self._evento.id, cantidad, prefijo)
         self._tarea.progreso.connect(self._actualizar_progreso)
@@ -368,7 +480,7 @@ class VistaCartones(QWidget):
         self._tarea.fallado.connect(self._generacion_fallada)
         self._tarea.start()
 
-    def _cancelar_generacion(self) -> None:
+    def _cancelar_tarea(self) -> None:
         if self._tarea is not None:
             self._tarea.cancelar()
             self._boton_cancelar_tarea.setEnabled(False)
@@ -385,9 +497,28 @@ class VistaCartones(QWidget):
                 + t("cartones.progreso", generados=generados, total=total)
             )
 
-    def _restaurar_controles_de_generacion(self) -> None:
+    def _preparar_controles_de_tarea(self, total: int) -> None:
+        """Común a generar y a imprimir: ninguna de las dos corre a la vez
+        (ambas comparten `self._tarea`, la barra de progreso y el botón de
+        cancelar), así que ambos botones de acción se deshabilitan juntos.
+        """
+        self._boton_generar.setEnabled(False)
+        self._boton_generar.setVisible(False)
+        self._boton_imprimir.setEnabled(False)
+        self._boton_imprimir.setVisible(False)
+        self._boton_cancelar_tarea.setVisible(True)
+        self._boton_cancelar_tarea.setEnabled(True)
+        self._barra_progreso.setVisible(True)
+        self._barra_progreso.setRange(0, total)
+        self._barra_progreso.setValue(0)
+        self._etiqueta_velocidad.setVisible(True)
+        self._marca_de_tiempo_progreso = time.monotonic()
+
+    def _restaurar_controles_de_tarea(self) -> None:
         self._boton_generar.setEnabled(True)
         self._boton_generar.setVisible(True)
+        self._boton_imprimir.setEnabled(True)
+        self._boton_imprimir.setVisible(True)
         self._boton_cancelar_tarea.setVisible(False)
         self._boton_cancelar_tarea.setEnabled(True)
         self._barra_progreso.setVisible(False)
@@ -401,7 +532,7 @@ class VistaCartones(QWidget):
         # — la barra puede quedar a mitad si la cancelación llegó tras varios
         # bloques ya insertados.
         cancelada = getattr(resultado, "completado_en", None) is None
-        self._restaurar_controles_de_generacion()
+        self._restaurar_controles_de_tarea()
         self.cargar()
         if cancelada:
             self._franja.mostrar(t("cartones.aviso.cancelado"))
@@ -409,13 +540,61 @@ class VistaCartones(QWidget):
             self._franja.mostrar(t("cartones.exito.lote_generado"))
 
     def _generacion_fallada(self, error: ErrorBingo) -> None:
-        self._restaurar_controles_de_generacion()
+        self._restaurar_controles_de_tarea()
         self._franja.mostrar_error(error)
+
+    # --- Impresión de PDF ---
+
+    def _abrir_formulario_imprimir(self) -> None:
+        dialogo = FormularioImprimir(self._con, self._evento, parent=self)
+        if dialogo.exec() != QDialog.DialogCode.Accepted or dialogo.resultado is None:
+            return
+        lote_id, carpeta = dialogo.resultado
+        self._lanzar_tarea_imprimir(lote_id, carpeta)
+
+    def _lanzar_tarea_imprimir(self, lote_id: int, carpeta: Path) -> None:
+        total = repo_carton.contar_por_lote(self._con, lote_id)
+        self._preparar_controles_de_tarea(total)
+        self._lote_recien_impreso_id = lote_id
+
+        self._tarea = Tarea(_imprimir_lote_en_hilo, self._evento.id, lote_id, carpeta)
+        self._tarea.progreso.connect(self._actualizar_progreso)
+        self._tarea.terminado.connect(self._impresion_terminada)
+        self._tarea.fallado.connect(self._impresion_fallada)
+        self._tarea.start()
+
+    def _impresion_terminada(self, resultado: object) -> None:
+        rutas = resultado if isinstance(resultado, list) else []
+        self._restaurar_controles_de_tarea()
+        self.cargar()
+        if not rutas:
+            self._franja.mostrar(t("cartones.aviso.cancelado"))
+            return
+        self._franja.mostrar(t("cartones.imprimir.exito", archivos=len(rutas)))
+        if confirmar(
+            self,
+            t("cartones.imprimir.confirmar_marcar.titulo"),
+            t("cartones.imprimir.confirmar_marcar.mensaje"),
+        ):
+            self._marcar_lote_impreso(self._lote_recien_impreso_id)
+
+    def _impresion_fallada(self, error: ErrorBingo) -> None:
+        self._restaurar_controles_de_tarea()
+        self._franja.mostrar_error(error)
+
+    def _marcar_lote_impreso(self, lote_id: int) -> None:
+        try:
+            servicio_impresion.marcar_lote_impreso(self._con, lote_id)
+        except ErrorBingo as error:
+            self._franja.mostrar_error(error)
+            return
+        self.cargar()
 
     # --- i18n ---
 
     def retraducir(self) -> None:
         self._boton_generar.setText(t("cartones.generar_lote"))
+        self._boton_imprimir.setText(t("cartones.imprimir.titulo"))
         self._boton_cancelar_tarea.setText(t("cartones.accion.cancelar"))
         self._boton_vacio.setText(t("cartones.generar_lote"))
         self._campo_busqueda.setPlaceholderText(t("cartones.buscar_codigo"))

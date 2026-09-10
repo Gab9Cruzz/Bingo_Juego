@@ -97,6 +97,30 @@ def listar_por_evento(
     return [_desde_fila(f) for f in filas]
 
 
+def listar_por_lote(
+    con: sqlite3.Connection,
+    lote_id: int,
+    *,
+    limite: int | None = None,
+    desplazamiento: int = 0,
+) -> list[Carton]:
+    """Todos los cartones de un lote, en orden de código (fase 3: la fuente
+    de `servicio_impresion.generar_pdf_lote`, que necesita imprimirlos en un
+    orden estable y reproducible, no el de `id`)."""
+    sql = "SELECT * FROM carton WHERE lote_id = ? ORDER BY codigo"
+    parametros: list[object] = [lote_id]
+    if limite is not None:
+        sql += " LIMIT ? OFFSET ?"
+        parametros += [limite, desplazamiento]
+    filas = con.execute(sql, parametros).fetchall()
+    return [_desde_fila(f) for f in filas]
+
+
+def contar_por_lote(con: sqlite3.Connection, lote_id: int) -> int:
+    fila = con.execute("SELECT COUNT(*) AS n FROM carton WHERE lote_id = ?", (lote_id,)).fetchone()
+    return fila["n"] if fila else 0
+
+
 def contar_por_estado(con: sqlite3.Connection, evento_id: int) -> dict[str, int]:
     filas = con.execute(
         "SELECT estado, COUNT(*) AS n FROM carton WHERE evento_id = ? GROUP BY estado",
@@ -123,10 +147,22 @@ def actualizar_estado(con: sqlite3.Connection, carton_id: int, estado: str) -> N
         con.execute("UPDATE carton SET estado = ? WHERE id = ?", (estado, carton_id))
 
 
-def actualizar_estado_por_lote(con: sqlite3.Connection, lote_id: int, estado: str) -> int:
-    """Cambia el estado de todos los cartones de un lote de una vez. Devuelve cuántos."""
+def actualizar_estado_por_lote(
+    con: sqlite3.Connection, lote_id: int, estado_actual: str, estado_nuevo: str
+) -> int:
+    """Cambia a `estado_nuevo` solo los cartones del lote que están en
+    `estado_actual`. Devuelve cuántos cambió.
+
+    Filtrar por `estado_actual` es obligatorio (fase 3, primer llamador real
+    de esta función — ver `docs/Fase_3/Plan_Implementacion_Fase3.md` §0):
+    "marcar el lote como impreso" no debe reescribir un cartón que ya esté
+    `vendido` o `anulado` solo porque comparte `lote_id`.
+    """
     with traducir_errores_sqlite():
-        cursor = con.execute("UPDATE carton SET estado = ? WHERE lote_id = ?", (estado, lote_id))
+        cursor = con.execute(
+            "UPDATE carton SET estado = ? WHERE lote_id = ? AND estado = ?",
+            (estado_nuevo, lote_id, estado_actual),
+        )
     return cursor.rowcount
 
 

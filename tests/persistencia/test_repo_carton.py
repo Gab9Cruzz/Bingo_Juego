@@ -150,9 +150,53 @@ def test_actualizar_estado_por_lote(con: sqlite3.Connection) -> None:
     crear_carton(con, ev.id, lote.id, semilla=1)
     crear_carton(con, ev.id, lote.id, semilla=2)
 
-    actualizados = repo_carton.actualizar_estado_por_lote(con, lote.id, "impreso")
+    actualizados = repo_carton.actualizar_estado_por_lote(con, lote.id, "generado", "impreso")
     assert actualizados == 2
     assert repo_carton.contar_por_estado(con, ev.id) == {"impreso": 2}
+
+
+def test_actualizar_estado_por_lote_no_toca_otro_estado(con: sqlite3.Connection) -> None:
+    """Hallazgo de la fase 3 (Plan_Implementacion_Fase3.md §0): 'marcar el
+    lote como impreso' no debe reescribir un cartón que ya esté anulado o
+    vendido solo porque comparte lote_id.
+    """
+    org = crear_organizacion(con)
+    ev = crear_evento(con, org.id)
+    lote = crear_lote(con, ev.id)
+    a = crear_carton(con, ev.id, lote.id, semilla=1)
+    crear_carton(con, ev.id, lote.id, semilla=2)
+    repo_carton.actualizar_estado(con, a.id, "anulado")
+
+    actualizados = repo_carton.actualizar_estado_por_lote(con, lote.id, "generado", "impreso")
+    assert actualizados == 1
+    assert repo_carton.obtener(con, a.id).estado == "anulado"
+    conteo = repo_carton.contar_por_estado(con, ev.id)
+    assert conteo == {"anulado": 1, "impreso": 1}
+
+
+def test_listar_por_lote(con: sqlite3.Connection) -> None:
+    org = crear_organizacion(con)
+    ev = crear_evento(con, org.id)
+    lote_a = crear_lote(con, ev.id, prefijo_codigo="A")
+    lote_b = crear_lote(con, ev.id, prefijo_codigo="B")
+    crear_carton(con, ev.id, lote_a.id, semilla=1)
+    crear_carton(con, ev.id, lote_a.id, semilla=2)
+    crear_carton(con, ev.id, lote_b.id, semilla=3)
+
+    resultado = repo_carton.listar_por_lote(con, lote_a.id)
+    assert len(resultado) == 2
+    assert all(c.lote_id == lote_a.id for c in resultado)
+    assert [c.codigo for c in resultado] == sorted(c.codigo for c in resultado)
+
+
+def test_contar_por_lote(con: sqlite3.Connection) -> None:
+    org = crear_organizacion(con)
+    ev = crear_evento(con, org.id)
+    lote = crear_lote(con, ev.id)
+    crear_carton(con, ev.id, lote.id, semilla=1)
+    crear_carton(con, ev.id, lote.id, semilla=2)
+    assert repo_carton.contar_por_lote(con, lote.id) == 2
+    assert repo_carton.contar_por_lote(con, lote.id + 999) == 0
 
 
 def test_eliminar_por_lote(con: sqlite3.Connection) -> None:

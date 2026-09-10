@@ -17,6 +17,14 @@ ATAJOS: dict[str, str] = {
     "guardar": "Ctrl+S",
     "cancelar": "Esc",
     "abrir_log": "Ctrl+L",
+    # Fase 4 (decisión DS19, docs/Fase_4/Plan_Implementacion_Fase4.md): la
+    # sección de Compradores y Rondas se opera igual de rápido con teclado
+    # que con ratón.
+    "buscar": "Ctrl+F",
+    "importar": "Ctrl+I",
+    "nueva_ronda": "Ctrl+N",
+    "subir": "Ctrl+Shift+Up",
+    "bajar": "Ctrl+Shift+Down",
 }
 
 # Tamaño mínimo de fuente y objetivo de pulsación: Gabriel lee esto de reojo,

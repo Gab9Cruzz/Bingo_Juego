@@ -27,6 +27,8 @@ _COLUMNAS = (
     "estado",
     "plantilla_json",
     "tema_json",
+    "clave_evento",
+    "recaudado_real_centavos",
     "creado_en",
 )
 
@@ -43,6 +45,8 @@ def _desde_fila(fila: sqlite3.Row) -> Evento:
         estado=fila["estado"],
         plantilla_json=fila["plantilla_json"],
         tema_json=fila["tema_json"],
+        clave_evento=fila["clave_evento"],
+        recaudado_real_centavos=fila["recaudado_real_centavos"],
         creado_en=fila["creado_en"],
     )
 
@@ -58,6 +62,8 @@ def _a_parametros(evento: Evento) -> dict[str, object]:
         "estado": evento.estado,
         "plantilla_json": evento.plantilla_json,
         "tema_json": evento.tema_json,
+        "clave_evento": evento.clave_evento,
+        "recaudado_real_centavos": evento.recaudado_real_centavos,
         "creado_en": evento.creado_en or ahora_iso(),
     }
 
@@ -138,6 +144,15 @@ def actualizar_plantilla(con: sqlite3.Connection, evento_id: int, plantilla_json
         )
 
 
+def actualizar_clave(con: sqlite3.Connection, evento_id: int, clave_evento: str) -> None:
+    """Escribe la clave HMAC del evento (fase 3, dominio/firma.py). Se genera una
+    sola vez, la primera vez que se necesita firmar un QR (servicio_eventos.
+    asegurar_clave_evento) — este verbo solo escribe, no decide cuándo.
+    """
+    with traducir_errores_sqlite():
+        con.execute("UPDATE evento SET clave_evento = ? WHERE id = ?", (clave_evento, evento_id))
+
+
 def actualizar_tema(con: sqlite3.Connection, evento_id: int, tema_json: str) -> None:
     try:
         json.loads(tema_json)
@@ -147,6 +162,19 @@ def actualizar_tema(con: sqlite3.Connection, evento_id: int, tema_json: str) -> 
         ) from error
     with traducir_errores_sqlite():
         con.execute("UPDATE evento SET tema_json = ? WHERE id = ?", (tema_json, evento_id))
+
+
+def actualizar_recaudado_real(
+    con: sqlite3.Connection, evento_id: int, recaudado_real_centavos: int | None
+) -> None:
+    """Fase 4 (ANEXO A, hallazgo R8): monto que el operador declara haber
+    recibido de verdad, para comparar contra la recaudación teórica en el
+    reporte de conciliación. `None` = todavía no declarada."""
+    with traducir_errores_sqlite():
+        con.execute(
+            "UPDATE evento SET recaudado_real_centavos = ? WHERE id = ?",
+            (recaudado_real_centavos, evento_id),
+        )
 
 
 def existe_nombre(

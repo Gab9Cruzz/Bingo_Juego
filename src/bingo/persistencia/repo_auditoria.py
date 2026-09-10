@@ -40,3 +40,18 @@ def listar_por_evento(
         (evento_id, limite),
     ).fetchall()
     return [_desde_fila(f) for f in filas]
+
+
+def eliminar_por_evento_y_prefijo(con: sqlite3.Connection, evento_id: int, prefijo: str) -> int:
+    """Barrido selectivo de auditoría (fase 4, hallazgo A3): el borrado de
+    datos personales de un comprador (`servicio_compradores.
+    eliminar_todos_del_evento`) solo debe llevarse las acciones `venta.*`,
+    que son las únicas que referencian datos de compradores — nunca
+    `lote.creado`, `carton.cambio_estado` u otras que un panel de auditoría
+    del evento sigue necesitando."""
+    with traducir_errores_sqlite():
+        cursor = con.execute(
+            "DELETE FROM auditoria WHERE evento_id = ? AND accion LIKE ?",
+            (evento_id, f"{prefijo}%"),
+        )
+    return cursor.rowcount

@@ -246,3 +246,41 @@ def test_cambiar_estado_carton_invalido(con: sqlite3.Connection) -> None:
     carton = repo_carton.listar_por_evento(con, ev.id)[0]
     with pytest.raises(ErrorTransicionInvalida):
         servicio_cartones.cambiar_estado_carton(con, carton.id, "vendido")
+
+
+def test_regenerar_lote_reproduce_los_mismos_cartones(con: sqlite3.Connection) -> None:
+    """Decisión D6 de la fase 3: el caso de uso real es 'se perdió el PDF,
+    hay que reimprimir sin vender cartones distintos'.
+    """
+    ev = _evento(con)
+    original = servicio_cartones.generar_lote(con, ev.id, 20, "REG", semilla="s-regenerar")
+    firmas_originales = sorted(c.firma for c in repo_carton.listar_por_evento(con, ev.id))
+
+    regenerado = servicio_cartones.regenerar_lote(con, original.id)
+
+    # SQLite reasigna el mismo rowid al borrar y volver a insertar una única
+    # fila (la tabla `lote` no usa AUTOINCREMENT): no se compara `id`, se
+    # compara el contenido, que es lo que garantiza la reproducción real.
+    assert regenerado.semilla == original.semilla
+    assert regenerado.prefijo_codigo == original.prefijo_codigo
+    assert regenerado.cantidad == original.cantidad
+    firmas_regeneradas = sorted(c.firma for c in repo_carton.listar_por_evento(con, ev.id))
+    assert firmas_regeneradas == firmas_originales
+
+
+def test_regenerar_lote_deja_un_solo_lote_con_ese_prefijo(con: sqlite3.Connection) -> None:
+    ev = _evento(con)
+    original = servicio_cartones.generar_lote(con, ev.id, 5, "REG2", semilla="s2")
+    servicio_cartones.regenerar_lote(con, original.id)
+
+    lotes = repo_lote.listar_por_evento(con, ev.id)
+    assert len(lotes) == 1
+    assert lotes[0].prefijo_codigo == "REG2"
+    assert lotes[0].completado_en is not None
+
+
+def test_regenerar_lote_inexistente(con: sqlite3.Connection) -> None:
+    from bingo.utilidades.errores import ErrorNoEncontrado
+
+    with pytest.raises(ErrorNoEncontrado):
+        servicio_cartones.regenerar_lote(con, 999_999)

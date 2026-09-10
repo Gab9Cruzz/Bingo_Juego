@@ -54,6 +54,18 @@ def test_servicios_no_importan_pyside6() -> None:
         assert "PySide6" not in importados, f"{archivo} importa PySide6"
 
 
+def test_impresion_no_importa_pyside6_ni_sqlite3() -> None:
+    """`impresion/` (fase 3) importa ReportLab, no PySide6 ni sqlite3: el
+    motor de render se usa igual desde un `QThread` (servicio_impresion) que
+    desde la vista previa de la interfaz, sin acoplarse a ninguno de los dos.
+    """
+    for archivo in _archivos_python(RAIZ_SRC / "impresion"):
+        arbol = ast.parse(archivo.read_text(encoding="utf-8"), filename=str(archivo))
+        importados = _nombres_importados(arbol)
+        assert "PySide6" not in importados, f"{archivo} importa PySide6"
+        assert "sqlite3" not in importados, f"{archivo} importa sqlite3"
+
+
 def _literales_de_cadena(arbol: ast.AST) -> list[str]:
     return [
         nodo.value
@@ -63,7 +75,7 @@ def _literales_de_cadena(arbol: ast.AST) -> list[str]:
 
 
 def test_sql_no_se_filtra_fuera_de_persistencia() -> None:
-    for carpeta in ("config", "dominio", "servicios", "ui", "utilidades", "i18n"):
+    for carpeta in ("config", "dominio", "impresion", "servicios", "ui", "utilidades", "i18n"):
         for archivo in _archivos_python(RAIZ_SRC / carpeta):
             arbol = ast.parse(archivo.read_text(encoding="utf-8"), filename=str(archivo))
             for literal in _literales_de_cadena(arbol):
@@ -77,7 +89,7 @@ def test_execute_no_se_llama_fuera_de_persistencia() -> None:
     """La valla de verdad (enmienda E27): nadie fuera de `persistencia/` llama
     a `.execute(`, `.executemany(` ni `.executescript(`.
     """
-    for carpeta in ("config", "dominio", "servicios", "ui", "utilidades", "i18n"):
+    for carpeta in ("config", "dominio", "impresion", "servicios", "ui", "utilidades", "i18n"):
         for archivo in _archivos_python(RAIZ_SRC / carpeta):
             arbol = ast.parse(archivo.read_text(encoding="utf-8"), filename=str(archivo))
             for nodo in ast.walk(arbol):

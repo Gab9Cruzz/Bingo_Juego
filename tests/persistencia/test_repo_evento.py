@@ -70,3 +70,17 @@ def test_existe_nombre_por_organizacion(con: sqlite3.Connection) -> None:
     repo_evento.crear(con, Evento(organizacion_id=org.id, nombre="Bingo Anual"))
     assert repo_evento.existe_nombre(con, org.id, "bingo anual")
     assert not repo_evento.existe_nombre(con, org.id, "otro")
+
+
+def test_clave_evento_nula_por_defecto(con: sqlite3.Connection) -> None:
+    org = _crear_org(con)
+    ev = repo_evento.crear(con, Evento(organizacion_id=org.id, nombre="Bingo"))
+    assert ev.clave_evento is None
+    assert repo_evento.obtener(con, ev.id).clave_evento is None
+
+
+def test_actualizar_clave(con: sqlite3.Connection) -> None:
+    org = _crear_org(con)
+    ev = repo_evento.crear(con, Evento(organizacion_id=org.id, nombre="Bingo"))
+    repo_evento.actualizar_clave(con, ev.id, "clave-secreta")
+    assert repo_evento.obtener(con, ev.id).clave_evento == "clave-secreta"

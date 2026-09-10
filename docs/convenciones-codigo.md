@@ -136,6 +136,21 @@ que se entrega a la organización.
   `al_progresar: Callable[[int, int], None] | None = None` y
   `debe_cancelar: Callable[[], bool] | None = None`, y **nunca** importan Qt.
 
+## Guardado: autoguardado vs. explícito (decisión DS14, fase 4)
+
+- **Autoguardado con retardo** (`QTimer` de un solo disparo,
+  `RETARDO_VISTA_PREVIA_MS`) solo en editores de **configuración visual de un
+  registro único** por evento: la plantilla del cartón (`vista_plantilla.py`)
+  y el tema del dashboard (`vista_tema.py`). No hay "cancelar" que tenga
+  sentido — el registro siempre existe, solo se edita.
+- **Guardar/Cancelar explícito** en toda vista que edita una **entidad de una
+  colección** (un comprador, una ronda, un patrón): el operador puede abrir el
+  formulario, arrepentirse y cerrar sin que nada se escriba. Corolario:
+  cambiar de fila/selección con cambios sin guardar debería pedir
+  confirmación de descarte — pendiente en `vista_rondas.py` (`TODOS.md`), que
+  hoy guarda cada cambio de campo al vuelo en vez de por un botón explícito;
+  no se corrigió por tiempo, no por estar de acuerdo con el atajo.
+
 ## i18n
 
 - Ninguna cadena visible se escribe directamente en el código: todo pasa por

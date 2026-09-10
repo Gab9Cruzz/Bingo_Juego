@@ -43,10 +43,11 @@ def test_eliminar_bloqueado_con_eventos(con: sqlite3.Connection) -> None:
 
 
 def test_eliminar_bloqueado_con_patrones(con: sqlite3.Connection) -> None:
+    from bingo.dominio.modelos import Patron
+    from bingo.persistencia import repo_patron
+
     org = repo_organizacion.crear(con, Organizacion(nombre="Fundación X"))
-    con.execute(
-        "INSERT INTO patron (nombre, mascara, organizacion_id) VALUES ('P', 1, ?)", (org.id,)
-    )
+    repo_patron.crear(con, Patron(nombre="P", mascaras=[1], organizacion_id=org.id))
     with pytest.raises(ErrorIntegridad):
         repo_organizacion.eliminar(con, org.id)
 

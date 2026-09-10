@@ -165,6 +165,16 @@ QFrame#franjaError {{
     border: 1px solid {_PELIGRO};
     border-radius: 6px;
 }}
+QFrame#franjaExito {{
+    background-color: rgba(63, 178, 127, 0.15);
+    border: 1px solid {_EXITO};
+    border-radius: 6px;
+}}
+QFrame#franjaInfo {{
+    background-color: rgba(91, 141, 239, 0.15);
+    border: 1px solid {_ACENTO};
+    border-radius: 6px;
+}}
 QFrame#tarjetaOrganizacion {{
     background-color: {_SUPERFICIE_ELEVADA};
     border: 1px solid {_BORDE};

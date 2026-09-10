@@ -15,6 +15,9 @@ dev = [
     "pytest>=8.3,<9",
     "pytest-qt>=4.4,<5",
     "ruff>=0.16,<1",
+    # Solo para pruebas (fase 3): verificar que el PDF generado abre y tiene
+    # el número de páginas esperado. No se empaqueta con la aplicación.
+    "pypdf>=5,<6",
 ]
 
 [build-system]
@@ -27,6 +30,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "bingo.persistencia.migraciones" = ["*.sql"]
 "bingo.i18n" = ["*.json"]
+"bingo.recursos.fuentes" = ["*/*.ttf", "*/*.txt"]
 
 [tool.ruff]
 line-length = 100

@@ -47,8 +47,22 @@ def limpiar_error_campo(campo: QWidget, etiqueta_error: QLabel) -> None:
     campo.style().polish(campo)
 
 
+_OBJETO_POR_NIVEL = {
+    "error": "franjaError",
+    "exito": "franjaExito",
+    "info": "franjaInfo",
+}
+
+
 class FranjaError(QWidget):
-    """Canal 2: barra no modal en la cabecera de una vista, con reintento."""
+    """Canal 2: barra no modal en la cabecera de una vista, con reintento.
+
+    Tres niveles (decisión DS6 del plan de la fase 4, corrige el hallazgo
+    H6): antes de esta enmienda, un mensaje de éxito salía sobre el mismo
+    fondo rojo que un error — `mostrar_exito`/`mostrar_info` usan
+    `#franjaExito`/`#franjaInfo` (`ui/tema.py`), reservando el rojo para lo
+    que de verdad es un error.
+    """
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -63,7 +77,6 @@ class FranjaError(QWidget):
         self._boton_reintentar.clicked.connect(self._reintentar)
         distribucion.addWidget(self._etiqueta, stretch=1)
         distribucion.addWidget(self._boton_reintentar)
-        self.setProperty("_frame_objname", "franjaError")
         self.hide()
 
         i18n.registrar_para_retraduccion(self)
@@ -72,7 +85,18 @@ class FranjaError(QWidget):
         if self._on_reintentar is not None:
             self._on_reintentar()
 
-    def mostrar(self, mensaje: str, on_reintentar: Callable[[], None] | None = None) -> None:
+    def mostrar(
+        self,
+        mensaje: str,
+        on_reintentar: Callable[[], None] | None = None,
+        *,
+        nivel: str = "error",
+    ) -> None:
+        objeto = _OBJETO_POR_NIVEL.get(nivel, "franjaError")
+        if self.objectName() != objeto:
+            self.setObjectName(objeto)
+            self.style().unpolish(self)
+            self.style().polish(self)
         self._etiqueta.setText(mensaje)
         self._on_reintentar = on_reintentar
         self._boton_reintentar.setVisible(on_reintentar is not None)
@@ -81,7 +105,13 @@ class FranjaError(QWidget):
     def mostrar_error(
         self, error: ErrorBingo, on_reintentar: Callable[[], None] | None = None
     ) -> None:
-        self.mostrar(t(error.clave_i18n, **error.parametros), on_reintentar)
+        self.mostrar(t(error.clave_i18n, **error.parametros), on_reintentar, nivel="error")
+
+    def mostrar_exito(self, mensaje: str) -> None:
+        self.mostrar(mensaje, nivel="exito")
+
+    def mostrar_info(self, mensaje: str) -> None:
+        self.mostrar(mensaje, nivel="info")
 
     def ocultar(self) -> None:
         self.hide()

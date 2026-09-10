@@ -11,13 +11,14 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QMouseEvent, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QStackedWidget,
     QVBoxLayout,
@@ -30,6 +31,7 @@ from bingo.i18n import t
 from bingo.persistencia import repo_organizacion
 from bingo.ui.registro_vistas import SECCIONES_ESPACIO_EVENTO
 from bingo.ui.tema import paleta_organizacion
+from bingo.utilidades.errores import ErrorBingo
 
 _OBJETO_CHIP = {
     "borrador": "chipBorrador",
@@ -37,6 +39,46 @@ _OBJETO_CHIP = {
     "en_curso": "chipEnCurso",
     "finalizado": "chipFinalizado",
 }
+
+
+class _ChipListoParaJugar(QLabel):
+    """Decisión DS1 del plan de la fase 4: "¿qué falta para poder jugar?"
+    respondida en la cabecera del evento, no enterrada dentro de la vista de
+    rondas — clicable, despliega el detalle de
+    `servicio_rondas.validar_evento_listo`."""
+
+    def __init__(self, con: Any, evento: Evento, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._con = con
+        self._evento = evento
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.actualizar()
+
+    def actualizar(self) -> None:
+        from bingo.servicios import servicio_rondas
+
+        try:
+            pendientes = servicio_rondas.validar_evento_listo(self._con, self._evento.id)
+        except ErrorBingo:
+            self.setVisible(False)
+            return
+        bloqueantes = [p for p in pendientes if p.bloqueante]
+        self._pendientes = pendientes
+        if not bloqueantes:
+            self.setText("✔ " + t("espacio_evento.chip.listo"))
+            self.setObjectName("chipFinalizado")
+        else:
+            self.setText(t("espacio_evento.chip.faltan", cantidad=len(bloqueantes)))
+            self.setObjectName("chipBorrador")
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def mousePressEvent(self, evento: QMouseEvent) -> None:  # noqa: N802 - override Qt
+        detalle = "\n".join(f"• {t(p.clave_i18n, **p.parametros)}" for p in self._pendientes)
+        if not detalle:
+            detalle = "✔ " + t("espacio_evento.chip.listo")
+        QMessageBox.information(self, t("espacio_evento.chip.detalle_titulo"), detalle)
+        super().mousePressEvent(evento)
 
 
 class EspacioEvento(QWidget):
@@ -67,6 +109,7 @@ class EspacioEvento(QWidget):
         self._etiqueta_fecha = QLabel(evento.fecha or "")
         self._chip_estado = QLabel(t(f"estado_evento.{evento.estado}"))
         self._chip_estado.setObjectName(_OBJETO_CHIP.get(evento.estado, "chipBorrador"))
+        self._chip_listo = _ChipListoParaJugar(con, evento)
         self._boton_cerrar = QPushButton()
         self._boton_cerrar.clicked.connect(self.cerrado.emit)
 
@@ -76,6 +119,7 @@ class EspacioEvento(QWidget):
         cabecera.addWidget(self._etiqueta_nombre)
         cabecera.addWidget(self._etiqueta_fecha)
         cabecera.addWidget(self._chip_estado)
+        cabecera.addWidget(self._chip_listo)
         cabecera.addStretch()
         cabecera.addWidget(self._boton_cerrar)
 
@@ -95,6 +139,9 @@ class EspacioEvento(QWidget):
                 pagina.setObjectName("etiquetaSecundaria")
             self._contenido.addWidget(pagina)
         self._riel.currentRowChanged.connect(self._contenido.setCurrentIndex)
+        # Recalcula el chip al cambiar de sección: es el momento natural en
+        # que el operador acaba de guardar algo en Rondas/Compradores.
+        self._riel.currentRowChanged.connect(lambda _fila: self._chip_listo.actualizar())
         self._riel.setCurrentRow(0)
 
         cuerpo = QHBoxLayout()

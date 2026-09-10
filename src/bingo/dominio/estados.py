@@ -19,9 +19,18 @@ TRANSICIONES_EVENTO: Mapping[str, set[str]] = {
 
 TRANSICIONES_CARTON: Mapping[str, set[str]] = {
     "generado": {"impreso", "anulado"},
-    "impreso": {"entregado", "anulado"},
+    # impreso -> vendido: la organización vende cartones que nunca pasaron
+    # por "entregado" (talonarios repartidos y vendidos en la puerta). El
+    # paso "entregado" es un control de inventario opcional, no obligatorio
+    # (fase 4, decisión D2, docs/Fase_4/Plan_Implementacion_Fase4.md).
+    "impreso": {"entregado", "vendido", "anulado"},
     "entregado": {"vendido", "anulado"},
-    "vendido": {"anulado"},
+    # vendido -> impreso: camino de anular_venta (fase 4, hallazgo C2). El
+    # comprador se equivocó o se arrepintió; el cartón físico sigue siendo
+    # válido y vuelve a su estado anterior, que `anular_venta` recupera de
+    # `comprador.estado_carton_previo` (nunca se asume "entregado" a ciegas).
+    # vendido -> entregado también es válido si el estado previo era ese.
+    "vendido": {"impreso", "entregado", "anulado"},
     "anulado": set(),
 }
 

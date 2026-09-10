@@ -61,6 +61,19 @@ def dir_logs_evento(evento_id: int) -> Path:
     return dir_logs() / str(evento_id)
 
 
+def dir_medios_evento(evento_id: int) -> Path:
+    """Logo(s) propios de un evento (fase 3): si el operador sube uno distinto
+    al de la organización para este evento en particular, vive aquí, indexado
+    por id por la misma razón que `dir_medios_organizacion`.
+    """
+    return dir_medios() / "eventos" / str(evento_id)
+
+
+def dir_impresos_evento(evento_id: int) -> Path:
+    """PDFs de cartones generados para un evento (fase 3, servicio_impresion)."""
+    return raiz_datos() / "impresos" / str(evento_id)
+
+
 def ruta_bd() -> Path:
     return dir_datos() / "bingo.db"
 

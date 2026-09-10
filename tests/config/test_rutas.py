@@ -33,6 +33,14 @@ def test_dir_logs_evento_usa_id(bingo_home: Path) -> None:
     assert rutas.dir_logs_evento(3) == rutas.dir_logs() / "3"
 
 
+def test_dir_medios_evento_usa_id(bingo_home: Path) -> None:
+    assert rutas.dir_medios_evento(9) == rutas.dir_medios() / "eventos" / "9"
+
+
+def test_dir_impresos_evento_usa_id(bingo_home: Path) -> None:
+    assert rutas.dir_impresos_evento(9) == rutas.raiz_datos() / "impresos" / "9"
+
+
 def test_advertencia_ubicacion_sincronizada(monkeypatch, tmp_path: Path) -> None:
     ruta_onedrive = tmp_path / "OneDrive" / "Bingo"
     monkeypatch.setenv("BINGO_HOME", str(ruta_onedrive))

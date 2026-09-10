@@ -8,8 +8,16 @@ from random import Random
 import pytest
 
 from bingo.dominio.carton import firma, generar_carton, orden_canonico
-from bingo.dominio.modelos import Carton, Evento, Lote, Organizacion
-from bingo.persistencia import repo_carton, repo_evento, repo_lote, repo_organizacion
+from bingo.dominio.modelos import Carton, Comprador, Evento, Lote, Organizacion, Patron, Ronda
+from bingo.persistencia import (
+    repo_carton,
+    repo_comprador,
+    repo_evento,
+    repo_lote,
+    repo_organizacion,
+    repo_patron,
+    repo_ronda,
+)
 
 
 def crear_organizacion(con: sqlite3.Connection, **overrides: object) -> Organizacion:
@@ -49,6 +57,27 @@ def crear_carton(
     } | overrides
     repo_carton.crear_varios(con, [Carton(**datos)])
     return repo_carton.obtener_por_codigo(con, evento_id, datos["codigo"])
+
+
+def crear_patron(con: sqlite3.Connection, **overrides: object) -> Patron:
+    datos = {"nombre": "Patrón de prueba", "mascaras": [1]} | overrides
+    return repo_patron.crear(con, Patron(**datos))
+
+
+def crear_comprador(con: sqlite3.Connection, carton_id: int, **overrides: object) -> Comprador:
+    datos = {"carton_id": carton_id, "nombre": "Comprador de prueba"} | overrides
+    return repo_comprador.crear(con, Comprador(**datos))
+
+
+def crear_ronda(
+    con: sqlite3.Connection, evento_id: int, patron_id: int, **overrides: object
+) -> Ronda:
+    datos = {
+        "evento_id": evento_id,
+        "nombre": "Ronda de prueba",
+        "patron_id": patron_id,
+    } | overrides
+    return repo_ronda.crear(con, Ronda(**datos))
 
 
 @pytest.fixture
