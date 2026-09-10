@@ -120,6 +120,15 @@ def migraciones_pendientes(version: int) -> list[Migracion]:
     return [m for m in _todas_las_migraciones() if m.numero > version]
 
 
+def version_maxima_disponible() -> int:
+    """La migración más alta que este binario sabe aplicar. La usa
+    `servicios/servicio_respaldos.py` (tarea 4.12) para rechazar restaurar
+    un `.zip` de una versión de la aplicación más nueva que la instalada —
+    validar esto es parte de "validar el zip entero antes de tocar un solo
+    archivo" (hallazgo B4)."""
+    return max((m.numero for m in _todas_las_migraciones()), default=0)
+
+
 def _verificar_base_a_medias(con: sqlite3.Connection, version: int) -> None:
     """Detecta una base con tablas creadas pero `schema_version` vacía.
 

@@ -4,9 +4,18 @@ salida distinto, y ninguno termina el proceso con un traceback en una consola
 que en producción no existe.
 
 Códigos de salida: 0 éxito, 2 sin permisos/estructura, 3 base corrupta,
-4 migración fallida, 5 segunda instancia (nunca 0: cero es éxito para
-cualquiera que invoque el proceso, incluido un instalador o una tarea
-programada).
+4 migración fallida, 5 segunda instancia, 6 restauración de respaldo fallida
+(tarea 4.12, hallazgo B4 — documentado también en `docs/runbook.md`; nunca 0:
+cero es éxito para cualquiera que invoque el proceso, incluido un instalador
+o una tarea programada).
+
+**`--restaurar <zip>` corre antes que todo lo demás (hallazgo E-11):**
+argumentos → `asegurar_estructura` → validar el zip → restaurar → log →
+preferencias → i18n → `QLockFile` → `abrir_conexion` → migraciones. Si el
+`QLockFile` de los datos que se van a reemplazar ya está tomado por otra
+instancia corriendo, se niega a continuar — restaurar por debajo de un
+proceso que sigue con `bingo.db` abierto es un `WinError 32` a mitad de
+camino.
 """
 
 from __future__ import annotations
@@ -22,10 +31,23 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
 
 
+def _valor_de_argumento(argv: list[str], nombre: str) -> str | None:
+    """`--restaurar <valor>`: sin `argparse` completo (deuda anotada en
+    `TODOS.md`), pero ya no es un simple `in argv` — los dos flags
+    booleanos existentes no necesitan un valor detrás."""
+    if nombre not in argv:
+        return None
+    indice = argv.index(nombre)
+    if indice + 1 >= len(argv):
+        return None
+    return argv[indice + 1]
+
+
 def principal(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     reiniciar_datos = "--reiniciar-datos" in argv
     forzar_instancia = "--forzar-instancia" in argv
+    ruta_restaurar = _valor_de_argumento(argv, "--restaurar")
 
     # QApplication va PRIMERO (enmienda E7a): un QMessageBox sin QApplication
     # viva aborta el proceso, así que cualquier diálogo de error de más abajo
@@ -69,6 +91,45 @@ def principal(argv: list[str] | None = None) -> int:
             t("arranque.error.carpetas.mensaje", ruta=str(ruta_bd().parent)),
         )
         return 2
+
+    if ruta_restaurar is not None:
+        from pathlib import Path
+
+        # Guardia previa (hallazgo E-11): si otra instancia sigue corriendo
+        # sobre los datos actuales, su `.bingo.lock` sigue tomado — mover
+        # esos datos por debajo sería el `WinError 32` que esto existe para
+        # evitar. `deleteOnUnlock` porque este `tryLock` es solo de sondeo,
+        # nunca el lock real del proceso (ese llega más abajo).
+        lockfile_sondeo = QLockFile(str(ruta_bd().parent / ".bingo.lock"))
+        lockfile_sondeo.setStaleLockTime(0)
+        if not forzar_instancia and not lockfile_sondeo.tryLock(100):
+            from bingo.i18n import cargar as cargar_idioma
+            from bingo.i18n import t
+
+            cargar_idioma("es")
+            QMessageBox.warning(
+                None,
+                t("instancia.ya_en_ejecucion.titulo"),
+                t("instancia.ya_en_ejecucion.mensaje"),
+            )
+            return 5
+        lockfile_sondeo.unlock()
+
+        from bingo.i18n import cargar as cargar_idioma
+        from bingo.i18n import t
+        from bingo.servicios import servicio_respaldos
+        from bingo.utilidades.errores import ErrorBingo
+
+        cargar_idioma("es")
+        try:
+            servicio_respaldos.restaurar(Path(ruta_restaurar))
+        except ErrorBingo as error:
+            QMessageBox.critical(
+                None,
+                t("respaldo.restaurar.error.titulo"),
+                t(error.clave_i18n, **error.parametros),
+            )
+            return 6
 
     # El log se configura DESPUÉS de asegurar la estructura (enmienda G9):
     # RotatingFileHandler abre el archivo al construirse, y en un equipo

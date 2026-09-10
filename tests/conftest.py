@@ -74,7 +74,12 @@ def con(plantilla_bd: Path, bingo_home: Path) -> sqlite3.Connection:
     shutil.copyfile(plantilla_bd, ruta)
     conexion = abrir_conexion(ruta, synchronous="OFF")
     yield conexion
-    conexion.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    try:
+        conexion.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    except sqlite3.ProgrammingError:
+        # La prueba ya la cerró a propósito (por ejemplo, para simular la
+        # aplicación cerrada antes de restaurar un respaldo, hallazgo B4).
+        return
     conexion.close()
 
 

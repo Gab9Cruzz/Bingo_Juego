@@ -298,3 +298,22 @@ el plan completo:
   anulados, agrupados por ronda); `impresion/reporte.py` gana
   `reporte_evento_excel/pdf` con una hoja/sección "Rondas" más, mismo
   `_escribir_seguro`.
+- **Bug real encontrado al escribir `servicio_respaldos.restaurar()`: el
+  `.zip` vive por defecto en `dir_respaldos()`, que es una subcarpeta de
+  `raiz_datos()`.** Mover `raiz_datos()` entera a `*.pre-restauracion-*`
+  antes de leer el `.zip` se llevaría el propio `.zip` con ella. Se copia
+  siempre a un archivo temporal fuera de `raiz_datos()` antes de mover
+  nada — sin esto, restaurar habría fallado siempre que el operador usara
+  la ubicación por defecto (el caso normal).
+- **`exportar()` no recibe `con` (hallazgo B2, crítico): es la única función
+  de la fase que rompe "`con` va siempre primero"**, documentado como
+  excepción explícita porque corre en otro hilo (`Tarea`) y
+  `check_same_thread=True` no permite compartir la conexión entre hilos.
+- **`restaurar()` valida el `.zip` entero (zip-slip incluido, hallazgo E-2;
+  versión de esquema, hallazgo B4) antes de mover un solo archivo real.**
+  `Path.is_relative_to()` sobre la ruta ya resuelta rechaza rutas absolutas,
+  `..` y letras de unidad sin necesitar lógica de comparación de cadenas.
+- **`--restaurar` corre antes de `QLockFile`, del log y de `abrir_conexion`
+  (hallazgo E-11), con un sondeo de bloqueo previo:** si otra instancia
+  sigue corriendo sobre los datos que se van a reemplazar, se niega a
+  continuar en vez de mover una base que otro proceso tiene abierta.
