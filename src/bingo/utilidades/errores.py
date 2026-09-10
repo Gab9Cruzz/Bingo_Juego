@@ -107,6 +107,16 @@ class ErrorNoEncontrado(ErrorDominio):
     """Un servicio esperaba una entidad existente y el repositorio devolvió None."""
 
 
+class ErrorReanudacion(ErrorDominio):
+    """Fase 5, decisión D13. La reproducción en memoria de una ronda
+    (`extraccion` + cartones elegibles) no coincide, tras normalizar
+    anulados y rechazados, con lo que la base tiene registrado en
+    `ganador`. Es una incoherencia real, no un caso normal de anulación —
+    modal terminal incluso en `modo_vivo` (decisión DU-12/4.27): un modal
+    feo en cámara es mejor que seguir jugando sobre datos que no cuadran.
+    """
+
+
 class ErrorConfiguracion(ErrorBingo):
     """Fallo de configuración del entorno (rutas, preferencias, etc.)."""
 

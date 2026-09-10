@@ -44,6 +44,12 @@ def _desde_fila(fila: sqlite3.Row) -> Ronda:
         premio_descripcion=fila["premio_descripcion"],
         premio_imagen=fila["premio_imagen"],
         estado=fila["estado"],
+        # Fase 5 (migración 004). Se leen aquí pero NUNCA se escriben con
+        # `actualizar()` (hallazgo A1) — ver los verbos puntuales más abajo.
+        iniciada_en=fila["iniciada_en"],
+        cerrada_en=fila["cerrada_en"],
+        acta_hash=fila["acta_hash"],
+        acta_generada_en=fila["acta_generada_en"],
     )
 
 
@@ -133,6 +139,71 @@ def contar_por_patron(con: sqlite3.Connection, patron_id: int) -> int:
         "SELECT COUNT(*) AS n FROM ronda WHERE patron_id = ?", (patron_id,)
     ).fetchone()
     return fila["n"] if fila else 0
+
+
+def actualizar_estado(con: sqlite3.Connection, ronda_id: int, estado: str) -> None:
+    with traducir_errores_sqlite():
+        con.execute("UPDATE ronda SET estado = ? WHERE id = ?", (estado, ronda_id))
+
+
+def listar_por_estado(con: sqlite3.Connection, evento_id: int, estado: str) -> list[Ronda]:
+    filas = con.execute(
+        "SELECT * FROM ronda WHERE evento_id = ? AND estado = ? ORDER BY orden",
+        (evento_id, estado),
+    ).fetchall()
+    return [_desde_fila(f) for f in filas]
+
+
+def obtener_en_juego(con: sqlite3.Connection, evento_id: int) -> Ronda | None:
+    """La ronda `en_curso` o `pausada` del evento, si hay una. Un evento
+    nunca tiene más de una a la vez (contrato §5.3): el motor de sorteo la
+    usa para saber si hay una partida viva que sobrevivir al cambiar de
+    sección del riel (hallazgo S5-3)."""
+    fila = con.execute(
+        "SELECT * FROM ronda WHERE evento_id = ? AND estado IN ('en_curso', 'pausada') "
+        "ORDER BY orden LIMIT 1",
+        (evento_id,),
+    ).fetchone()
+    return _desde_fila(fila) if fila is not None else None
+
+
+def actualizar_inicio(
+    con: sqlite3.Connection, ronda_id: int, *, estado: str, iniciada_en: str
+) -> None:
+    """Verbo puntual (hallazgo A1): `iniciar_ronda` solo toca `estado` e
+    `iniciada_en`, nunca reescribe la fila completa."""
+    with traducir_errores_sqlite():
+        con.execute(
+            "UPDATE ronda SET estado = :estado, iniciada_en = :iniciada_en WHERE id = :id",
+            {"estado": estado, "iniciada_en": iniciada_en, "id": ronda_id},
+        )
+
+
+def actualizar_cierre(
+    con: sqlite3.Connection, ronda_id: int, *, estado: str, cerrada_en: str | None
+) -> None:
+    """Verbo puntual (hallazgo A1). `cerrada_en=None` es la reapertura
+    (`cerrada -> en_curso`, hallazgo V5): la ronda vuelve a estar abierta y
+    deja de tener fecha de cierre."""
+    with traducir_errores_sqlite():
+        con.execute(
+            "UPDATE ronda SET estado = :estado, cerrada_en = :cerrada_en WHERE id = :id",
+            {"estado": estado, "cerrada_en": cerrada_en, "id": ronda_id},
+        )
+
+
+def actualizar_acta(
+    con: sqlite3.Connection, ronda_id: int, *, acta_hash: str | None, acta_generada_en: str | None
+) -> None:
+    """Verbo puntual (hallazgo A1). `acta_hash=None` es la invalidación al
+    reabrir una ronda con acta ya generada (hallazgo E-16/C6,
+    `servicios/servicio_actas.py`)."""
+    with traducir_errores_sqlite():
+        con.execute(
+            "UPDATE ronda SET acta_hash = :acta_hash, acta_generada_en = :acta_generada_en "
+            "WHERE id = :id",
+            {"acta_hash": acta_hash, "acta_generada_en": acta_generada_en, "id": ronda_id},
+        )
 
 
 def contar_por_patron_en_eventos_no_borrador(con: sqlite3.Connection, patron_id: int) -> int:

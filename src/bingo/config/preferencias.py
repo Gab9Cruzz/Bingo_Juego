@@ -23,7 +23,11 @@ IDIOMA_POR_DEFECTO = "es"
 class VentanaPreferencias:
     geometria: str | None = None
     maximizada: bool = False
-    monitor_transmision: int | None = None  # reservado para la fase 5
+    # Nombre de QScreen (QScreen.name()), no índice: Windows reordena los
+    # monitores entre arranques (hallazgo V7, fase 5). Un preferencias.json
+    # de una versión anterior a la fase 5 trae aquí un int; `cargar()` lo
+    # descarta en vez de dejarlo con el tipo equivocado.
+    monitor_transmision: str | None = None
 
 
 @dataclass
@@ -48,6 +52,17 @@ def cargar() -> Preferencias:
     try:
         datos = json.loads(ruta.read_text(encoding="utf-8"))
         ventana = VentanaPreferencias(**datos.get("ventana", {}))
+        if ventana.monitor_transmision is not None and not isinstance(
+            ventana.monitor_transmision, str
+        ):
+            # preferencias.json de antes de la fase 5: guardaba un índice
+            # (int), no el nombre de QScreen. Se descarta y se vuelve a
+            # preguntar; no revienta (hallazgo V7).
+            logger.warning(
+                "ventana.monitor_transmision con tipo antiguo (%r); se descarta",
+                ventana.monitor_transmision,
+            )
+            ventana.monitor_transmision = None
         return Preferencias(
             idioma=datos.get("idioma", IDIOMA_POR_DEFECTO),
             ultimo_evento_abierto_id=datos.get("ultimo_evento_abierto_id"),

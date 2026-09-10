@@ -34,6 +34,20 @@ TRANSICIONES_CARTON: Mapping[str, set[str]] = {
     "anulado": set(),
 }
 
+TRANSICIONES_RONDA: Mapping[str, set[str]] = {
+    "pendiente": {"en_curso"},
+    "en_curso": {"pausada", "cerrada"},
+    "pausada": {"en_curso", "cerrada"},
+    # cerrada -> en_curso (hallazgo V5, fase 5): cerrar una ronda por error
+    # en directo (botón mal pulsado, Ctrl+Enter en el panel equivocado)
+    # tiene que tener deshacer. La reapertura exige confirmación escrita y
+    # se registra en auditoría (sorteo.ronda_reabierta); si la ronda ya
+    # tenía acta generada, además invalida el hash (servicio_actas, hallazgo
+    # E-16/C6). Sin esta transición, la promesa del alcance §6.6 de retomar
+    # un bingo otro día desde la ronda pendiente sería falsa.
+    "cerrada": {"en_curso"},
+}
+
 
 def puede_transicionar(transiciones: Mapping[str, set[str]], actual: str, nuevo: str) -> bool:
     return nuevo in transiciones.get(actual, set())

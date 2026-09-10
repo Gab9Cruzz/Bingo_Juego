@@ -476,5 +476,6 @@
   "conciliacion.columna.comprador": "Buyer",
   "conciliacion.columna.telefono": "Phone",
   "conciliacion.columna.cedula": "ID number",
-  "conciliacion.columna.correo": "Email"
+  "conciliacion.columna.correo": "Email",
+  "sorteo.error.reanudacion_incoherente": "Resuming does not match the recorded data. Review the detail before continuing."
 }

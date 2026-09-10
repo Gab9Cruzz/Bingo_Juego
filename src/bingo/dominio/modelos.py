@@ -137,8 +137,18 @@ class Patron:
 class Ronda:
     """Fase 4. `orden` lo asigna `servicio_rondas.crear_ronda`
     (`MAX(orden) + 1` del evento); el valor que traiga el objeto al crear se
-    ignora. `estado` no tiene máquina de estados todavía (doc técnico §16.2,
-    fase 5)."""
+    ignora. `estado` sigue la máquina de `dominio/estados.py::TRANSICIONES_RONDA`
+    (fase 5).
+
+    `iniciada_en`, `cerrada_en`, `acta_hash` y `acta_generada_en` (fase 5,
+    migración 004) **nunca** se escriben con `repo_ronda.actualizar()`
+    (hallazgo A1, crítico, plan de la fase 5): ese verbo reescribe *todas*
+    las columnas de `_COLUMNAS` desde el objeto en memoria, y una `Ronda`
+    cargada al abrir una vista de preparación no lleva el `acta_hash` que
+    otra pantalla acaba de escribir — el último que guarde borraría el del
+    otro. Se escriben solo con los verbos puntuales `actualizar_inicio`,
+    `actualizar_cierre` y `actualizar_acta`.
+    """
 
     evento_id: int
     nombre: str
@@ -151,3 +161,48 @@ class Ronda:
     premio_descripcion: str | None = None
     premio_imagen: str | None = None
     estado: str = "pendiente"
+    iniciada_en: str | None = None
+    cerrada_en: str | None = None
+    acta_hash: str | None = None
+    acta_generada_en: str | None = None
+
+
+@dataclass(slots=True)
+class Extraccion:
+    """Fase 5. Una bola extraída de una ronda. `orden` es la posición dentro
+    de la ronda (1, 2, 3...), asignada por `servicio_sorteo.MotorSorteo`, no
+    por el repositorio: el bombo es quien sabe cuántas bolas van salidas."""
+
+    ronda_id: int
+    orden: int
+    numero: int
+    id: int | None = None
+    extraida_en: str = ""
+
+
+@dataclass(slots=True)
+class Ganador:
+    """Fase 5. Una fila por cartón detectado ganador de una ronda —
+    detección y registro son dos cosas distintas (decisión D8): el motor
+    solo persiste las detecciones de la primera bola que produjo ganador
+    (`bola_numero`), y a partir de ahí `decision` la fija
+    `servicio_ganadores.confirmar`.
+
+    `decision`: `None` mientras está pendiente; luego `"unico"`,
+    `"reparto"`, `"desempate_externo"`, `"no_reclamado"` o `"rechazado"`.
+    `anulado_en` es un borrado lógico (mismo patrón que `Comprador`, fase 4):
+    la fila no se borra nunca, porque `idx_ganador_ronda_carton` es total
+    (hallazgo V1) y una reanudación no debe poder reinsertarla viva.
+    """
+
+    ronda_id: int
+    carton_id: int
+    bola_numero: int
+    id: int | None = None
+    confirmado: bool = False
+    reparte_premio: bool = False
+    registrado_en: str = ""
+    confirmado_en: str | None = None
+    decision: str | None = None
+    anulado_en: str | None = None
+    nota: str | None = None

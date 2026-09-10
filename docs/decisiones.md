@@ -158,3 +158,32 @@ el plan completo:
 - **Orden del riel: Compradores sube al tercer puesto (decisión de gusto
   TD-1).** Plantilla no se toca nunca más una vez impresos los cartones;
   Compradores es la sección de la noche del evento.
+
+## Fase 5 — Sorteo en vivo y cierre
+
+- **`ronda.premio_valor` (REAL, 001) queda muerta como estado permanente
+  aceptado, no como deuda (decisión D3, corrección del hallazgo M3).** E4b ya
+  se cumple desde la 003 con `premio_valor_centavos`; reconstruir `ronda`
+  entera solo para borrar una columna que nadie lee es riesgo puro a cambio
+  de estética, sobre una tabla que ya puede tener filas reales de un evento.
+  La próxima vez que `ronda` se reconstruya por una razón de verdad, se
+  elimina de paso.
+- **El índice único de `ganador(ronda_id, carton_id)` es total, no parcial
+  (corrección del hallazgo V1, crítico).** Un cartón solo puede ganar una
+  ronda una vez, anulado o no: la anulación es un hecho sobre esa misma fila,
+  no una invitación a que la reanudación cree otra viva.
+- **`preferencias.ventana.monitor_transmision` se guarda por
+  `QScreen.name()`, no por índice (hallazgo V7).** Windows reordena los
+  monitores entre arranques. Un `preferencias.json` de antes de la fase 5 con
+  un entero se descarta al leer, no revienta.
+- **`TRANSICIONES_RONDA` incluye `cerrada -> en_curso` (hallazgo V5).** Cerrar
+  una ronda por error en directo tiene que tener deshacer, y el alcance §6.6
+  promete retomar un bingo otro día desde la ronda pendiente. La reapertura
+  exige confirmación escrita y va a auditoría; si la ronda ya tenía acta
+  generada, invalida el hash (tarea 4.11).
+- **Las cuatro columnas nuevas de `ronda` (fase 5) nunca se escriben con
+  `repo_ronda.actualizar()` (hallazgo A1, crítico).** Ese verbo reescribe
+  *todas* las columnas de `_COLUMNAS` desde el objeto en memoria; una `Ronda`
+  cargada al abrir una vista de preparación borraría en silencio el
+  `acta_hash` que otra pantalla acaba de escribir. Se usan verbos puntuales:
+  `actualizar_inicio`, `actualizar_cierre`, `actualizar_acta`.

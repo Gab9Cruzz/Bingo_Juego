@@ -497,5 +497,6 @@
   "conciliacion.columna.comprador": "Comprador",
   "conciliacion.columna.telefono": "Teléfono",
   "conciliacion.columna.cedula": "Cédula",
-  "conciliacion.columna.correo": "Correo"
+  "conciliacion.columna.correo": "Correo",
+  "sorteo.error.reanudacion_incoherente": "La reanudación no coincide con los datos registrados. Revisa el detalle antes de continuar."
 }

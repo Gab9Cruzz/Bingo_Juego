@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -14,8 +15,9 @@ def test_primera_aplicacion_crea_esquema(bingo_home) -> None:
         # 002_fase3.sql (columna evento.clave_evento) desde que la fase 3
         # dejó de editar 001_inicial.sql (decisión D1, Plan_Implementacion_Fase3.md §3).
         # 003_fase4.sql reconstruye patron/comprador y añade columnas de premio.
-        assert aplicadas == [1, 2, 3]
-        assert migraciones.version_actual(con) == 3
+        # 004_fase5.sql añade columnas de sorteo/acta a ronda y ganador (decisión D3).
+        assert aplicadas == [1, 2, 3, 4]
+        assert migraciones.version_actual(con) == 4
         tablas = {
             r[0]
             for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
@@ -161,11 +163,12 @@ def test_migracion_003_sobre_base_poblada_por_002(bingo_home, tmp_path: Path, mo
         )
         con.execute("INSERT INTO patron (nombre, mascara, organizacion_id) VALUES ('P', 5, 1)")
 
-        # Apuntar de vuelta a las migraciones reales (incluida la 003) para la segunda pasada:
+        # Apuntar de vuelta a las migraciones reales (incluidas la 003 y la
+        # 004) para la segunda pasada:
         monkeypatch.setattr(migraciones, "_resolver_directorio", lambda: migraciones_reales)
         aplicadas = migraciones.aplicar_migraciones(con)
-        assert aplicadas == [3]
-        assert migraciones.version_actual(con) == 3
+        assert aplicadas == [3, 4]
+        assert migraciones.version_actual(con) == 4
 
         fila_comprador = con.execute(
             "SELECT provisional, anulado_en, estado_carton_previo, nombre "
@@ -184,6 +187,77 @@ def test_migracion_003_sobre_base_poblada_por_002(bingo_home, tmp_path: Path, mo
             "SELECT mascaras, usa_libre, es_sistema FROM patron WHERE id = 1"
         ).fetchone()
         assert fila_patron["mascaras"] == "[5]"
+    finally:
+        con.close()
+
+
+def test_migracion_004_sobre_base_poblada_por_003(bingo_home, tmp_path: Path, monkeypatch) -> None:
+    """`test_migraciones` sube a la 004 sobre una base con datos de la 003
+    (tarea 4.1 del plan de la fase 5): una ronda y un ganador ya insertados
+    bajo el esquema anterior deben sobrevivir con las columnas nuevas en
+    NULL, y el índice único de `ganador` debe ser total, no parcial
+    (hallazgo V1)."""
+    con = abrir_conexion(synchronous="OFF")
+    try:
+        carpeta = tmp_path / "solo_001_002_003"
+        carpeta.mkdir()
+        migraciones_reales = migraciones._resolver_directorio()
+        for numero in ("001_inicial.sql", "002_fase3.sql", "003_fase4.sql"):
+            (carpeta / numero).write_bytes((migraciones_reales / numero).read_bytes())
+        _apuntar_a_directorio_temporal(monkeypatch, carpeta)
+        migraciones.aplicar_migraciones(con)
+        assert migraciones.version_actual(con) == 3
+
+        con.execute(
+            "INSERT INTO organizacion (nombre, creada_en) VALUES ('Org', '2026-01-01T00:00:00Z')"
+        )
+        con.execute(
+            "INSERT INTO evento (organizacion_id, nombre, creado_en) "
+            "VALUES (1, 'Ev', '2026-01-01T00:00:00Z')"
+        )
+        con.execute("INSERT INTO patron (nombre, mascaras, organizacion_id) VALUES ('P', '[5]', 1)")
+        con.execute(
+            "INSERT INTO ronda (evento_id, orden, nombre, patron_id, estado) "
+            "VALUES (1, 1, 'Ronda 1', 1, 'cerrada')"
+        )
+        con.execute(
+            "INSERT INTO lote (evento_id, cantidad, prefijo_codigo, semilla, generado_en) "
+            "VALUES (1, 1, 'A', 's', '2026-01-01T00:00:00Z')"
+        )
+        numeros = ",".join(str(n) for n in range(1, 25))
+        con.execute(
+            "INSERT INTO carton (evento_id, lote_id, codigo, numeros, firma, estado) "
+            "VALUES (1, 1, 'A-1', ?, 'f', 'vendido')",
+            (numeros,),
+        )
+        con.execute(
+            "INSERT INTO ganador (ronda_id, carton_id, bola_numero, registrado_en) "
+            "VALUES (1, 1, 42, '2026-01-01T00:00:00Z')"
+        )
+
+        monkeypatch.setattr(migraciones, "_resolver_directorio", lambda: migraciones_reales)
+        aplicadas = migraciones.aplicar_migraciones(con)
+        assert aplicadas == [4]
+        assert migraciones.version_actual(con) == 4
+
+        fila_ronda = con.execute(
+            "SELECT iniciada_en, cerrada_en, acta_hash, acta_generada_en FROM ronda WHERE id = 1"
+        ).fetchone()
+        assert tuple(fila_ronda) == (None, None, None, None)
+
+        fila_ganador = con.execute(
+            "SELECT confirmado_en, decision, anulado_en, nota FROM ganador WHERE id = 1"
+        ).fetchone()
+        assert tuple(fila_ganador) == (None, None, None, None)
+
+        # Índice único TOTAL (hallazgo V1): insertar el mismo (ronda_id,
+        # carton_id) de nuevo debe fallar aunque la fila original estuviera
+        # "anulada" (aquí no lo está, pero el índice no lleva WHERE).
+        with pytest.raises(sqlite3.IntegrityError):
+            con.execute(
+                "INSERT INTO ganador (ronda_id, carton_id, bola_numero, registrado_en) "
+                "VALUES (1, 1, 50, '2026-01-01T00:00:00Z')"
+            )
     finally:
         con.close()
 

@@ -2,7 +2,12 @@ import sqlite3
 
 import pytest
 
-from bingo.dominio.estados import TRANSICIONES_CARTON, TRANSICIONES_EVENTO, puede_transicionar
+from bingo.dominio.estados import (
+    TRANSICIONES_CARTON,
+    TRANSICIONES_EVENTO,
+    TRANSICIONES_RONDA,
+    puede_transicionar,
+)
 from bingo.dominio.modelos import Evento, Organizacion
 from bingo.persistencia import repo_evento, repo_organizacion
 from bingo.servicios import servicio_eventos
@@ -70,3 +75,33 @@ def test_transiciones_carton_invalidas(actual: str, nuevo: str) -> None:
 
 def test_carton_anulado_es_terminal() -> None:
     assert TRANSICIONES_CARTON["anulado"] == set()
+
+
+@pytest.mark.parametrize(
+    ("actual", "nuevo"),
+    [
+        ("pendiente", "en_curso"),
+        ("en_curso", "pausada"),
+        ("en_curso", "cerrada"),
+        ("pausada", "en_curso"),
+        ("pausada", "cerrada"),
+        # cerrada -> en_curso: la reapertura (hallazgo V5, fase 5). Un bingo
+        # se retoma otro día desde una ronda que se cerró por error.
+        ("cerrada", "en_curso"),
+    ],
+)
+def test_transiciones_ronda_validas(actual: str, nuevo: str) -> None:
+    assert puede_transicionar(TRANSICIONES_RONDA, actual, nuevo)
+
+
+@pytest.mark.parametrize(
+    ("actual", "nuevo"),
+    [
+        ("pendiente", "pausada"),  # salta pasos: no se pausa sin haber iniciado
+        ("pendiente", "cerrada"),
+        ("cerrada", "pendiente"),  # hacia atrás más allá de lo permitido
+        ("cerrada", "pausada"),
+    ],
+)
+def test_transiciones_ronda_invalidas(actual: str, nuevo: str) -> None:
+    assert not puede_transicionar(TRANSICIONES_RONDA, actual, nuevo)
