@@ -503,5 +503,15 @@
   "bombo.error.numero_fuera_de_rango": "El número {numero} está fuera del rango 1-75.",
   "bombo.error.numero_repetido": "El número {numero} está repetido en las bolas ya extraídas.",
   "sorteo.error.sin_cartones_elegibles": "No hay ningún cartón vendido con comprador registrado: no se puede iniciar la ronda.",
-  "sorteo.error.ronda_no_reanudable": "La ronda está en estado \"{estado}\": no se puede reanudar."
+  "sorteo.error.ronda_no_reanudable": "La ronda está en estado \"{estado}\": no se puede reanudar.",
+  "ganador.error.qr_invalido": "El código QR no es válido para este evento.",
+  "ganador.error.codigo_inexistente": "No existe ningún cartón con ese código.",
+  "ganador.error.no_vendido": "Este cartón no está vendido.",
+  "ganador.error.sin_comprador": "Este cartón no tiene comprador registrado.",
+  "ganador.error.patron_no_cumplido": "Este cartón todavía no cumple el patrón.",
+  "ganador.error.decision_invalida": "\"{valor}\" no es una decisión válida.",
+  "ganador.error.sin_detectados": "No hay ningún ganador detectado en esta ronda.",
+  "ganador.error.empate_bolas_distintas": "Hay ganadores detectados en bolas distintas ({bolas}); confirma que quieres repartir entre ellos.",
+  "ganador.error.resolucion_ambigua": "Indica exactamente un ganador único o una lista de reparto, no ambos ni ninguno.",
+  "ganador.error.id_no_detectado": "Ese ganador no está entre los detectados de esta ronda."
 }

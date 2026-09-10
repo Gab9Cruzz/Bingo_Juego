@@ -176,6 +176,22 @@ def test_reabrir_ronda_cerrada_es_valido_segun_transiciones_ronda(
     assert recargada.cerrada_en is None
 
 
+def test_iniciar_ronda_no_reabre_una_cerrada(con: sqlite3.Connection, escenario) -> None:
+    """`iniciar_ronda` es solo el primer arranque: reabrir pasa por
+    `reanudar_ronda`, que sí reproduce la historia de extracciones. Si
+    `iniciar_ronda` aceptara una ronda `cerrada`, olvidaría en memoria las
+    marcas ya hechas."""
+    ronda, *_ = escenario
+    motor = MotorSorteo(rng=_RngSecuencial())
+    motor.iniciar_ronda(con, ronda.id)
+    motor.extraer(con)
+    motor.cerrar_ronda(con, ronda.id)
+
+    motor_nuevo = MotorSorteo(rng=_RngSecuencial())
+    with pytest.raises(ErrorTransicionInvalida):
+        motor_nuevo.iniciar_ronda(con, ronda.id)
+
+
 def test_ganador_se_detecta_solo_en_su_bola_y_no_de_nuevo(
     con: sqlite3.Connection, escenario
 ) -> None:

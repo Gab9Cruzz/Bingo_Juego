@@ -153,10 +153,21 @@ class MotorSorteo:
     # -- ciclo de vida de la ronda ------------------------------------------
 
     def iniciar_ronda(self, con: sqlite3.Connection, ronda_id: int) -> None:
+        """Solo el primer arranque (`pendiente -> en_curso`): construye un
+        `EstadoPartida` en blanco. **No** vale para reabrir una ronda
+        `cerrada` que ya tiene extracciones — eso olvidaría en memoria las
+        marcas ya hechas y el `Bombo` nuevo podría volver a elegir un
+        número que `extraccion` ya tiene (`UNIQUE(ronda_id, numero)`
+        saltaría a mitad de un evento en vivo). Reabrir pasa por
+        `servicio_rondas.reabrir_ronda` seguido de `reanudar_ronda()`, que sí
+        reproduce la historia existente (decisión D13). Por eso este método
+        no usa `puede_transicionar` en general: `TRANSICIONES_RONDA` también
+        permite `cerrada -> en_curso` (hallazgo V5), pero no por esta vía.
+        """
         ronda = repo_ronda.obtener(con, ronda_id)
         if ronda is None:
             raise ErrorNoEncontrado("error.no_encontrado", parametros={"id": ronda_id})
-        if not puede_transicionar(TRANSICIONES_RONDA, ronda.estado, "en_curso"):
+        if ronda.estado != "pendiente":
             raise ErrorTransicionInvalida(
                 "error.transicion_invalida",
                 parametros={"actual": ronda.estado, "nuevo": "en_curso"},

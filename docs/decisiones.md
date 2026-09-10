@@ -211,3 +211,9 @@ el plan completo:
   ("reanudar de todos modos", `forzar=True`) que registra
   `sorteo.reanudacion_incoherente` en auditoría en vez de bloquear el
   evento en vivo.
+- **Reclamo por código o por QR firmado, nunca degradando uno al otro
+  (hallazgo S1, alto).** Si el texto contiene `|` se trata como QR: una
+  firma inválida es rechazo duro (`ganador.error.qr_invalido`), nunca cae a
+  tratar la parte anterior al `|` como código tecleado — eso dejaría pasar
+  `"A-0142|00000000"` sin que el HMAC validara nada. El QR (`LONGITUD_HMAC`
+  de 32 bits) es un antifaltas de tipeo, no una prueba de posesión.

@@ -482,5 +482,15 @@
   "bombo.error.numero_fuera_de_rango": "Number {numero} is outside the 1-75 range.",
   "bombo.error.numero_repetido": "Number {numero} is repeated among the balls already drawn.",
   "sorteo.error.sin_cartones_elegibles": "There is no sold card with a registered buyer: the round cannot be started.",
-  "sorteo.error.ronda_no_reanudable": "The round is in state \"{estado}\": it cannot be resumed."
+  "sorteo.error.ronda_no_reanudable": "The round is in state \"{estado}\": it cannot be resumed.",
+  "ganador.error.qr_invalido": "The QR code is not valid for this event.",
+  "ganador.error.codigo_inexistente": "No card exists with that code.",
+  "ganador.error.no_vendido": "This card is not sold.",
+  "ganador.error.sin_comprador": "This card has no registered buyer.",
+  "ganador.error.patron_no_cumplido": "This card does not meet the pattern yet.",
+  "ganador.error.decision_invalida": "\"{valor}\" is not a valid decision.",
+  "ganador.error.sin_detectados": "There is no detected winner in this round.",
+  "ganador.error.empate_bolas_distintas": "There are winners detected on different balls ({bolas}); confirm you want to split the prize among them.",
+  "ganador.error.resolucion_ambigua": "Give exactly one sole winner or a split list, not both or neither.",
+  "ganador.error.id_no_detectado": "That winner is not among this round's detected ones."
 }
