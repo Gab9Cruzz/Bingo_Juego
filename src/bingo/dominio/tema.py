@@ -149,6 +149,10 @@ class ConfigJuego:
     # decisión de la tarea 4.24: segundos de cuenta regresiva de reclamo;
     # 0 = sin límite.
     segundos_reclamo: int = 60
+    # Tarea 4.24: "por dónde grita bingo el jugador" — WhatsApp, en persona,
+    # teléfono. Texto configurable que se pinta en transmisión junto a la
+    # cuenta regresiva; el público tiene que saber a dónde reclamar.
+    canal_reclamo: str = ""
 
 
 def _bombo_por_defecto() -> ConfigBloque:

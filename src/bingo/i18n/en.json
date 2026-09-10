@@ -522,6 +522,7 @@
   "sorteo.accion.reanudar": "Resume",
   "sorteo.accion.cerrar_ronda": "Close round",
   "sorteo.accion.modo_vivo": "Live mode",
+  "sorteo.accion.mostrar_transmision": "Show broadcast",
   "sorteo.accion.consultar": "Check only",
   "sorteo.accion.registrar_reclamo": "Register claim",
   "sorteo.buscador.placeholder": "Card code or QR…",
@@ -540,5 +541,19 @@
   "sorteo.empate.titulo": "There is more than one winning card",
   "sorteo.empate.instruccion": "Pick a single winner, or select several and split the prize among them.",
   "sorteo.empate.elegir_unico": "Confirm as sole winner",
-  "sorteo.empate.repartir": "Split among the selected"
+  "sorteo.empate.repartir": "Split among the selected",
+  "transmision.pantalla.ninguna": "No screen was found for the broadcast.",
+  "transmision.pantalla.una_sola": "There is only one screen: the broadcast opens in a window, not full screen.",
+  "transmision.pantalla.guardada": "Broadcasting on the saved monitor.",
+  "transmision.pantalla.no_encontrada": "The monitor saved for the broadcast is no longer connected; another one was used.",
+  "transmision.pantalla.sin_elegir": "No monitor had been chosen for the broadcast; the second available one was used.",
+  "transmision.a_una_bola": "{cantidad} cards one ball away",
+  "transmision.hay_ganador.sin_limite": "There is a winning card. Claim via {canal}",
+  "transmision.hay_ganador.con_cuenta": "There is a winning card. Claim via {canal} · {segundos}s",
+  "transmision.reclamo_vencido": "Nobody claimed in time. The game continues.",
+  "transmision.ganador_confirmado": "BINGO! {codigo} · {nombre}",
+  "transmision.entre_rondas": "Next: {patron} · {premio}",
+  "transmision.pausa": "PAUSED",
+  "transmision.bienvenida.defecto": "Welcome to bingo",
+  "transmision.cierre.defecto": "Thanks for playing"
 }

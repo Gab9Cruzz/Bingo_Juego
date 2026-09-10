@@ -168,6 +168,22 @@ def test_cerrar_ronda_sin_pedir_confirmacion_si_no_hay_bombo(
     assert repo_ronda.obtener(con, ronda.id).estado == "cerrada"
 
 
+def test_boton_transmision_crea_y_cierra_la_ventana(
+    qapp, con: sqlite3.Connection, evento_creado, lote_creado
+) -> None:
+    i18n.cargar("es")
+    patron = crear_patron(con)
+    crear_ronda(con, evento_creado.id, patron.id)
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento_creado, espacio)
+
+    vista._boton_transmision.setChecked(True)  # noqa: SLF001
+    assert vista._ventana_transmision is not None  # noqa: SLF001
+
+    vista._boton_transmision.setChecked(False)  # noqa: SLF001
+    assert vista._ventana_transmision._cerrada  # noqa: SLF001
+
+
 def test_modo_vivo_delega_en_espacio_evento(
     qapp, con: sqlite3.Connection, evento_creado, lote_creado
 ) -> None:

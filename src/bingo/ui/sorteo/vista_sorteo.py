@@ -25,7 +25,7 @@ from __future__ import annotations
 from typing import Any
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QGroupBox,
@@ -40,8 +40,10 @@ from PySide6.QtWidgets import (
 )
 
 from bingo import i18n
+from bingo.config import preferencias
 from bingo.dominio.carton import carton_desde_orden_canonico
 from bingo.dominio.modelos import Ganador
+from bingo.dominio.tema import TemaDashboard
 from bingo.i18n import t
 from bingo.persistencia import (
     repo_auditoria,
@@ -57,6 +59,8 @@ from bingo.ui.atajos import ATAJOS
 from bingo.ui.dialogos import FranjaError, confirmar
 from bingo.ui.sorteo.dialogo_empate import DialogoEmpate
 from bingo.ui.sorteo.puente_sorteo import PuenteSorteo
+from bingo.ui.transmision.pantallas import elegir_pantalla
+from bingo.ui.transmision.ventana_transmision import VentanaTransmision
 from bingo.ui.widgets.cuadricula_carton import CuadriculaCarton
 from bingo.ui.widgets.rejilla_patron import RejillaPatron
 from bingo.ui.widgets.tablero_setenta_cinco import TableroSetentaYCinco
@@ -178,6 +182,15 @@ class VistaSorteo(QWidget):
         self._boton_modo_vivo.setCheckable(True)
         self._boton_modo_vivo.toggled.connect(self._alternar_modo_vivo)
 
+        self._ventana_transmision: VentanaTransmision | None = None
+        self._boton_transmision = QPushButton()
+        self._boton_transmision.setCheckable(True)
+        self._boton_transmision.toggled.connect(self._alternar_transmision)
+
+        fila_terciaria = QHBoxLayout()
+        fila_terciaria.addWidget(self._boton_transmision)
+        fila_terciaria.addWidget(self._boton_modo_vivo)
+
         zona_c = QVBoxLayout()
         zona_c.addLayout(fila_acciones_ronda)
         zona_c.addLayout(fila_buscador)
@@ -185,7 +198,7 @@ class VistaSorteo(QWidget):
         fila_resultado.addWidget(self._visor_reclamo)
         fila_resultado.addWidget(self._etiqueta_veredicto, stretch=1)
         zona_c.addLayout(fila_resultado)
-        zona_c.addWidget(self._boton_modo_vivo)
+        zona_c.addLayout(fila_terciaria)
 
         cabecera = QHBoxLayout()
         cabecera.addWidget(self._etiqueta_ronda)
@@ -567,6 +580,49 @@ class VistaSorteo(QWidget):
         else:
             self._espacio.desactivar_modo_vivo()
 
+    # -- ventana de transmisión (contrato §5.4, decisiones D14/DU-17/V7) ------
+
+    def _alternar_transmision(self, activo: bool) -> None:
+        if activo:
+            self._mostrar_transmision()
+        else:
+            self._ocultar_transmision()
+
+    def _mostrar_transmision(self) -> None:
+        # Siempre una instancia nueva: una ventana ya cerrada (`_cerrada`,
+        # decisión de robustez de `VentanaTransmision.closeEvent`) ignora
+        # las señales del puente para siempre — reabrir tiene que ser una
+        # ventana nueva, no reactivar la vieja.
+        self._ventana_transmision = VentanaTransmision(self._con, self._evento, self._puente)
+        tema = TemaDashboard.desde_json(self._evento.tema_json)
+        self._ventana_transmision.actualizar_tema(tema)
+        self._ventana_transmision.establecer_canal_reclamo(tema.juego.canal_reclamo)
+
+        nombres_disponibles = [pantalla.name() for pantalla in QGuiApplication.screens()]
+        prefs = preferencias.cargar()
+        decision = elegir_pantalla(nombres_disponibles, prefs.ventana.monitor_transmision)
+
+        self._ventana_transmision.mostrar_en(decision.pantalla, modo_ventana=decision.modo_ventana)
+        # Hallazgo V7: se guarda por nombre de QScreen, no por índice — solo
+        # cuando de verdad se eligió una pantalla real para pantalla
+        # completa, no en el modo ventana de respaldo.
+        if not decision.modo_ventana and decision.pantalla is not None:
+            prefs.ventana.monitor_transmision = decision.pantalla
+            preferencias.guardar(prefs)
+        if decision.motivo != "transmision.pantalla.guardada":
+            self._franja.mostrar_info(t(decision.motivo))
+
+        # D14: `showFullScreen()` en Windows roba la activación; se devuelve
+        # el foco a la ventana principal para que los atajos sigan
+        # funcionando sin necesidad de un clic manual.
+        ventana_principal = self.window()
+        if ventana_principal is not None:
+            self._ventana_transmision.restaurar_foco_a(ventana_principal)
+
+    def _ocultar_transmision(self) -> None:
+        if self._ventana_transmision is not None:
+            self._ventana_transmision.close()
+
     # -- errores ----------------------------------------------------------------
 
     def _al_fallar(self, error: ErrorBingo) -> None:
@@ -584,6 +640,7 @@ class VistaSorteo(QWidget):
         self._boton_consultar.setText(t("sorteo.accion.consultar"))
         self._boton_registrar_reclamo.setText(t("sorteo.accion.registrar_reclamo"))
         self._boton_modo_vivo.setText(t("sorteo.accion.modo_vivo"))
+        self._boton_transmision.setText(t("sorteo.accion.mostrar_transmision"))
         self._grupo_a_una_bola.setTitle(t("sorteo.a_una_bola.titulo_generico"))
         self._grupo_ganadores.setTitle(t("sorteo.ganadores.titulo_generico"))
         if self._ronda_actual is not None:

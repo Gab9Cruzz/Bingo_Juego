@@ -62,12 +62,8 @@ class _DiccionarioTolerante(dict):
         return MARCA_FALTANTE.format(clave=clave)
 
 
-def t(clave: str, **parametros: object) -> str:
-    """Resuelve una clave de traducción. Nunca lanza, nunca devuelve vacío."""
-    if not _traducciones:
-        cargar(IDIOMA_REFERENCIA)
-
-    plantilla = _traducciones.get(_idioma_actual, {}).get(clave)
+def _resolver(idioma: str, clave: str, parametros: dict[str, object]) -> str:
+    plantilla = _traducciones.get(idioma, {}).get(clave)
     if plantilla is None:
         # Respaldo: el español es el idioma de referencia.
         plantilla = _traducciones.get(IDIOMA_REFERENCIA, {}).get(clave)
@@ -80,6 +76,27 @@ def t(clave: str, **parametros: object) -> str:
     except ValueError:
         logger.warning("Plantilla i18n mal formada para la clave %s", clave)
         return plantilla
+
+
+def t(clave: str, **parametros: object) -> str:
+    """Resuelve una clave de traducción contra el idioma activo de la
+    interfaz. Nunca lanza, nunca devuelve vacío."""
+    if not _traducciones:
+        cargar(IDIOMA_REFERENCIA)
+    return _resolver(_idioma_actual, clave, parametros)
+
+
+def t_en(idioma: str, clave: str, **parametros: object) -> str:
+    """Como `t()`, pero contra un `idioma` explícito, no el activo de la
+    interfaz (decisión DU-13, fase 5): la ventana de transmisión tiene su
+    propio idioma (`tema_json.idioma_publico`) — si el operador pone la
+    interfaz en inglés para probar algo, el público no debe ver "WINNER"
+    donde antes decía "¡BINGO!". Carga el idioma pedido si no está en caché."""
+    if idioma not in _traducciones:
+        _traducciones[idioma] = _cargar_archivo(idioma)
+    if IDIOMA_REFERENCIA not in _traducciones:
+        _traducciones[IDIOMA_REFERENCIA] = _cargar_archivo(IDIOMA_REFERENCIA)
+    return _resolver(idioma, clave, parametros)
 
 
 def registrar_para_retraduccion(widget: Retraducible) -> None:

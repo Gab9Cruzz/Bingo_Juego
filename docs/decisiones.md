@@ -234,3 +234,31 @@ el plan completo:
   directo a la señal `cerrado`, sin aviso — con una partida en vivo,
   cerrar la pantalla no debería sentirse como un clic reversible por
   accidente aunque los datos ya estén a salvo en la base.
+- **`i18n.t_en(idioma, clave, **parametros)` (decisión DU-13).** `t()`
+  siempre resuelve contra el idioma activo de la interfaz; la transmisión
+  necesita su propio idioma (`tema_json.idioma_publico`), independiente de
+  con qué idioma esté probando algo el operador. Se añadió sin tocar `t()`.
+- **La máquina de nueve estados de la transmisión (decisión DU-3) es una
+  clase Python pura** (`ui/transmision/estado_transmision.py`), sin Qt: la
+  conduce `VentanaTransmision` desde las señales de `PuenteSorteo`, pero se
+  prueba entera sin `QApplication`. Ni una bola nueva ni un cambio de "a
+  una bola" interrumpen `HAY_CARTON_GANADOR`/`GANADOR_CONFIRMADO` — la
+  ronda sigue extrayendo (`sin_reclamo="continuar"`) sin que la pantalla
+  vuelva a EN_JUEGO por su cuenta.
+- **La regla de "nunca código ni nombre antes de `ganador_confirmado`" se
+  prueba sobre el texto y sobre el código fuente del pintor, no sobre
+  píxeles** (`ui/transmision/contenido.py` + `test_bloques.py`): más
+  robusto que comparar imágenes, y detecta el error incluso si alguien
+  cambia el tamaño de fuente o el layout.
+- **`elegir_pantalla()` (hallazgo E-9) es una función pura** sobre una
+  lista de nombres, sin Qt — cubre los cuatro casos de DU-17 (una sola
+  pantalla, monitor guardado presente/ausente, ninguno guardado) sin un
+  monitor real, algo que `QT_QPA_PLATFORM=offscreen` no permitiría probar
+  de otro modo.
+- **La ventana de transmisión ignora las señales del puente tras cerrarse
+  mediante una bandera (`_cerrada`), no `disconnect()`.** PySide6 no
+  reconoce de forma fiable el mismo método ligado entre el `connect()`
+  original y un `disconnect()` posterior sobre señales `Signal(object)` /
+  `Signal(list)` — falla en silencio (un aviso, no una excepción) y deja la
+  ventana escuchando igual. La bandera es robusta independientemente de esa
+  limitación.

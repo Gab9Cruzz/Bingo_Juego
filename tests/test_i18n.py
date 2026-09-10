@@ -60,3 +60,20 @@ def test_cambiar_idioma() -> None:
     assert i18n.t("comun.guardar") == "Guardar"
     i18n.cargar("en")
     assert i18n.t("comun.guardar") == "Save"
+
+
+def test_t_en_no_depende_del_idioma_activo() -> None:
+    """Decisión DU-13: la ventana de transmisión resuelve contra un idioma
+    explícito, no el de la interfaz — si el operador prueba la app en
+    inglés, `t_en("es", ...)` sigue devolviendo español."""
+    i18n.cargar("en")
+    assert i18n.t("comun.guardar") == "Save"
+    assert i18n.t_en("es", "comun.guardar") == "Guardar"
+    assert i18n.t_en("en", "comun.guardar") == "Save"
+
+
+def test_t_en_clave_faltante_devuelve_marca() -> None:
+    i18n.cargar("es")
+    assert i18n.t_en("en", "clave.que.no.existe") == MARCA_FALTANTE.format(
+        clave="clave.que.no.existe"
+    )
