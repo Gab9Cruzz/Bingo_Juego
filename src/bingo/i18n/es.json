@@ -501,5 +501,7 @@
   "sorteo.error.reanudacion_incoherente": "La reanudación no coincide con los datos registrados. Revisa el detalle antes de continuar.",
   "sorteo.error.bombo_vacio": "Ya se extrajeron las 75 bolas.",
   "bombo.error.numero_fuera_de_rango": "El número {numero} está fuera del rango 1-75.",
-  "bombo.error.numero_repetido": "El número {numero} está repetido en las bolas ya extraídas."
+  "bombo.error.numero_repetido": "El número {numero} está repetido en las bolas ya extraídas.",
+  "sorteo.error.sin_cartones_elegibles": "No hay ningún cartón vendido con comprador registrado: no se puede iniciar la ronda.",
+  "sorteo.error.ronda_no_reanudable": "La ronda está en estado \"{estado}\": no se puede reanudar."
 }

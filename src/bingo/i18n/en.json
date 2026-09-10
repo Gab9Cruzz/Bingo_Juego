@@ -480,5 +480,7 @@
   "sorteo.error.reanudacion_incoherente": "Resuming does not match the recorded data. Review the detail before continuing.",
   "sorteo.error.bombo_vacio": "All 75 balls have already been drawn.",
   "bombo.error.numero_fuera_de_rango": "Number {numero} is outside the 1-75 range.",
-  "bombo.error.numero_repetido": "Number {numero} is repeated among the balls already drawn."
+  "bombo.error.numero_repetido": "Number {numero} is repeated among the balls already drawn.",
+  "sorteo.error.sin_cartones_elegibles": "There is no sold card with a registered buyer: the round cannot be started.",
+  "sorteo.error.ronda_no_reanudable": "The round is in state \"{estado}\": it cannot be resumed."
 }

@@ -187,3 +187,27 @@ el plan completo:
   cargada al abrir una vista de preparación borraría en silencio el
   `acta_hash` que otra pantalla acaba de escribir. Se usan verbos puntuales:
   `actualizar_inicio`, `actualizar_cierre`, `actualizar_acta`.
+- **`Bombo.siguiente()`/`confirmar()` en dos pasos, nunca un `extraer()`
+  mutante (hallazgo B1, crítico).** `confirmar()` solo se llama después del
+  commit de la transacción de la bola: si esa transacción falla, el número
+  sigue disponible, no desaparece del juego en silencio.
+- **`repo_ganador.crear()` es el verbo normal, sin `INSERT OR IGNORE`
+  (hallazgo C3, corrige lo que decía la tarea 4.4 original).** Con la
+  reanudación en solo lectura (D13) nadie reinserta un ganador ya
+  persistido; si el índice único salta, es un bug y debe llegar como
+  `ErrorIntegridad`, no tragárselo.
+- **Detección de ganador vs. registro (decisión D8, hallazgo C1, crítico):**
+  el motor solo persiste y notifica las detecciones de la primera
+  `extraccion.orden` que produjo un ganador. Con `sin_reclamo="continuar"`
+  la ronda sigue extrayendo bolas, pero ningún cartón que complete el
+  patrón en una bola posterior se registra ni dispara `ganadores_detectados`
+  otra vez — evita cientos de filas y que la cuenta de reclamo se reinicie
+  en bucle delante del público.
+- **Reanudación (D13): solo lectura, nunca reinserta.** La reproducción
+  reconstruye `marcado` y el bombo desde `extraccion`; la verificación
+  compara el conjunto detectado por bits (excluyendo lo que el operador ya
+  anuló o rechazó) contra lo persistido vigente. Solo una incoherencia real
+  dispara `ErrorReanudacion` (modal terminal); hay una vía explícita
+  ("reanudar de todos modos", `forzar=True`) que registra
+  `sorteo.reanudacion_incoherente` en auditoría en vez de bloquear el
+  evento en vivo.
