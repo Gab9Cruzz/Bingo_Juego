@@ -177,6 +177,29 @@ def actualizar_recaudado_real(
         )
 
 
+def actualizar_juego(con: sqlite3.Connection, evento_id: int, clave: str, valor: object) -> None:
+    """Escritura de campo puntual sobre `tema_json.juego.<clave>` (decisión
+    DU-7, fase 5): los controles **de directo** de la sección Sorteo (modo,
+    intervalo_seg, sonido_bola, voz, volumen_musica) se persisten así,
+    nunca reescribiendo el tema completo — es lo que evita el fallo de "dos
+    editores del mismo documento" con `vista_tema.py::_guardar`, que
+    reescribe `tema_json` entero con un `QTimer` de retardo y no recarga.
+
+    `json(?)` sobre `valor` serializado con `json.dumps` (no un parámetro
+    suelto): así un `bool` de Python queda como `true`/`false` en el JSON, no
+    como `0`/`1`. `COALESCE(tema_json, '{}')` (hallazgo E-13): un evento que
+    nunca abrió la sección Tema tiene `tema_json` en NULL, y
+    `json_set(NULL, ...)` devuelve NULL — el ajuste se perdería en silencio.
+    """
+    ruta = f"$.juego.{clave}"
+    with traducir_errores_sqlite():
+        con.execute(
+            "UPDATE evento SET tema_json = json_set(COALESCE(tema_json, '{}'), ?, json(?)) "
+            "WHERE id = ?",
+            (ruta, json.dumps(valor), evento_id),
+        )
+
+
 def existe_nombre(
     con: sqlite3.Connection, organizacion_id: int, nombre: str, excluir_id: int | None = None
 ) -> bool:

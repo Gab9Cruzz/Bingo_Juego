@@ -84,3 +84,47 @@ def test_actualizar_clave(con: sqlite3.Connection) -> None:
     ev = repo_evento.crear(con, Evento(organizacion_id=org.id, nombre="Bingo"))
     repo_evento.actualizar_clave(con, ev.id, "clave-secreta")
     assert repo_evento.obtener(con, ev.id).clave_evento == "clave-secreta"
+
+
+def test_actualizar_juego_con_tema_json_nulo_no_lo_pierde(con: sqlite3.Connection) -> None:
+    """Hallazgo E-13: un evento que nunca abrió la sección Tema tiene
+    `tema_json` en NULL. `json_set(NULL, ...)` devolvería NULL sin el
+    `COALESCE`, y el ajuste se perdería en silencio."""
+    import json
+
+    org = _crear_org(con)
+    ev = repo_evento.crear(con, Evento(organizacion_id=org.id, nombre="Bingo"))
+    assert ev.tema_json is None
+
+    repo_evento.actualizar_juego(con, ev.id, "intervalo_seg", 6)
+
+    tema = json.loads(repo_evento.obtener(con, ev.id).tema_json)
+    assert tema == {"juego": {"intervalo_seg": 6}}
+
+
+def test_actualizar_juego_conserva_otras_claves_del_tema(con: sqlite3.Connection) -> None:
+    import json
+
+    org = _crear_org(con)
+    ev = repo_evento.crear(con, Evento(organizacion_id=org.id, nombre="Bingo"))
+    repo_evento.actualizar_tema(con, ev.id, json.dumps({"colores": {"fondo": "#000000"}}))
+
+    repo_evento.actualizar_juego(con, ev.id, "modo", "automatico")
+
+    tema = json.loads(repo_evento.obtener(con, ev.id).tema_json)
+    assert tema == {"colores": {"fondo": "#000000"}, "juego": {"modo": "automatico"}}
+
+
+def test_actualizar_juego_guarda_booleano_como_json_bool_no_entero(con: sqlite3.Connection) -> None:
+    """Un `bool` de Python no debe quedar como `0`/`1` en el JSON: eso
+    rompería la reconstrucción de `ConfigJuego` la próxima vez que
+    `dominio/tema.py` la lea."""
+    import json
+
+    org = _crear_org(con)
+    ev = repo_evento.crear(con, Evento(organizacion_id=org.id, nombre="Bingo"))
+    repo_evento.actualizar_juego(con, ev.id, "sonido_bola", False)
+
+    crudo = repo_evento.obtener(con, ev.id).tema_json
+    assert '"sonido_bola": false' in crudo or '"sonido_bola":false' in crudo
+    assert json.loads(crudo)["juego"]["sonido_bola"] is False

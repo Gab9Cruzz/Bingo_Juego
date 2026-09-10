@@ -8,11 +8,23 @@ from random import Random
 import pytest
 
 from bingo.dominio.carton import firma, generar_carton, orden_canonico
-from bingo.dominio.modelos import Carton, Comprador, Evento, Lote, Organizacion, Patron, Ronda
+from bingo.dominio.modelos import (
+    Carton,
+    Comprador,
+    Evento,
+    Extraccion,
+    Ganador,
+    Lote,
+    Organizacion,
+    Patron,
+    Ronda,
+)
 from bingo.persistencia import (
     repo_carton,
     repo_comprador,
     repo_evento,
+    repo_extraccion,
+    repo_ganador,
     repo_lote,
     repo_organizacion,
     repo_patron,
@@ -78,6 +90,25 @@ def crear_ronda(
         "patron_id": patron_id,
     } | overrides
     return repo_ronda.crear(con, Ronda(**datos))
+
+
+def crear_extraccion(
+    con: sqlite3.Connection, ronda_id: int, *, orden: int = 1, numero: int = 1, **overrides: object
+) -> Extraccion:
+    datos = {"ronda_id": ronda_id, "orden": orden, "numero": numero} | overrides
+    return repo_extraccion.crear(con, Extraccion(**datos))
+
+
+def crear_ganador(
+    con: sqlite3.Connection,
+    ronda_id: int,
+    carton_id: int,
+    *,
+    bola_numero: int = 1,
+    **overrides: object,
+) -> Ganador:
+    datos = {"ronda_id": ronda_id, "carton_id": carton_id, "bola_numero": bola_numero} | overrides
+    return repo_ganador.crear(con, Ganador(**datos))
 
 
 @pytest.fixture
