@@ -2,7 +2,13 @@ import dataclasses
 
 import pytest
 
-from bingo.dominio.tema import ConfigBloque, TemaDashboard, validar
+from bingo.dominio.tema import (
+    ConfigBloque,
+    TemaDashboard,
+    _contador_bolas_por_defecto,
+    _reloj_por_defecto,
+    validar,
+)
 from bingo.utilidades.errores import ErrorValidacion
 
 
@@ -36,8 +42,11 @@ def test_campos_ausentes_caen_al_valor_por_defecto() -> None:
     parcial = '{"colores": {"fondo": "#000000"}}'
     tema = TemaDashboard.desde_json(parcial)
     assert tema.colores.fondo == "#000000"
-    assert tema.contador_bolas == ConfigBloque()
-    assert tema.reloj == ConfigBloque()
+    # Decisión DU-4: cada bloque lleva una posición por defecto propia, no
+    # el genérico ConfigBloque() en (0, 0) — así un evento nuevo no arranca
+    # con siete bloques superpuestos en la esquina.
+    assert tema.contador_bolas == _contador_bolas_por_defecto()
+    assert tema.reloj == _reloj_por_defecto()
     assert tema.banner_texto.visible is False
     assert tema.banner_texto.texto == ""
 
@@ -82,3 +91,135 @@ def test_validar_rechaza_ultimas_bolas_negativo() -> None:
     )
     with pytest.raises(ErrorValidacion):
         validar(tema)
+
+
+def test_por_defecto_no_tiene_solapes() -> None:
+    """Decisión DU-4: aplicar el plan tal como estaba dejaba siete bloques
+    superpuestos en el origen. La composición por defecto no debe solapar
+    ningún par de bloques visibles."""
+    from bingo.dominio.tema import detectar_solapes
+
+    assert detectar_solapes(TemaDashboard.por_defecto()) == []
+
+
+def test_detectar_solapes_encuentra_dos_bloques_en_el_mismo_sitio() -> None:
+    from bingo.dominio.tema import detectar_solapes
+
+    base = TemaDashboard.por_defecto()
+    tema = dataclasses.replace(base, reloj=dataclasses.replace(base.bombo))
+    pares = detectar_solapes(tema)
+    assert ("bombo", "reloj") in pares or ("reloj", "bombo") in pares
+
+
+def test_detectar_solapes_ignora_bloques_no_visibles() -> None:
+    from bingo.dominio.tema import detectar_solapes
+
+    base = TemaDashboard.por_defecto()
+    tema = dataclasses.replace(
+        base,
+        reloj=dataclasses.replace(base.bombo, visible=False),
+    )
+    assert detectar_solapes(tema) == []
+
+
+def test_validar_rechaza_numero_actual_muy_pequeno() -> None:
+    """Decisión DU-6: por debajo del 14% del alto del lienzo, no se lee en
+    un móvil con vídeo comprimido — es un requisito duro, no un aviso."""
+    base = TemaDashboard.por_defecto()
+    tema = dataclasses.replace(
+        base, numero_actual=dataclasses.replace(base.numero_actual, escala=0.1)
+    )
+    with pytest.raises(ErrorValidacion):
+        validar(tema)
+
+
+def test_validar_permite_numero_actual_pequeno_si_no_es_visible() -> None:
+    base = TemaDashboard.por_defecto()
+    tema = dataclasses.replace(
+        base,
+        numero_actual=dataclasses.replace(base.numero_actual, escala=0.1, visible=False),
+    )
+    validar(tema)  # no lanza
+
+
+def test_validar_rechaza_sin_reclamo_invalido() -> None:
+    from bingo.dominio.tema import ConfigJuego
+
+    tema = dataclasses.replace(
+        TemaDashboard.por_defecto(), juego=ConfigJuego(sin_reclamo="lo que sea")
+    )
+    with pytest.raises(ErrorValidacion):
+        validar(tema)
+
+
+def test_validar_rechaza_modo_invalido() -> None:
+    from bingo.dominio.tema import ConfigJuego
+
+    tema = dataclasses.replace(TemaDashboard.por_defecto(), juego=ConfigJuego(modo="rapido"))
+    with pytest.raises(ErrorValidacion):
+        validar(tema)
+
+
+def test_advertencias_contraste_preset_por_defecto_no_avisa() -> None:
+    from bingo.dominio.tema import advertencias_contraste
+
+    assert advertencias_contraste(TemaDashboard.por_defecto()) == []
+
+
+def test_advertencias_contraste_detecta_bajo_contraste() -> None:
+    from bingo.dominio.tema import advertencias_contraste
+
+    base = TemaDashboard.por_defecto()
+    tema = dataclasses.replace(
+        base,
+        colores=dataclasses.replace(base.colores, texto="#0b0b14"),  # igual al fondo
+    )
+    avisos = advertencias_contraste(tema)
+    assert "tema.aviso.contraste_texto" in avisos
+
+
+def test_bloques_tiene_posicion_por_defecto_para_todos() -> None:
+    """Decisión DU-4: `BLOQUES` lleva posición por defecto, no solo
+    dimensiones — y cada entrada corresponde a un atributo real de
+    `TemaDashboard` con esa misma posición."""
+    from bingo.dominio.tema import BLOQUES
+
+    tema = TemaDashboard.por_defecto()
+    for clave, _clave_i18n, pos_x, pos_y, _ancho, _alto in BLOQUES:
+        bloque = getattr(tema, clave)
+        assert bloque.pos_x == pos_x
+        assert bloque.pos_y == pos_y
+
+
+def test_ida_y_vuelta_conserva_idioma_publico_y_version() -> None:
+    tema = dataclasses.replace(TemaDashboard.por_defecto(), idioma_publico="en", version=1)
+    recuperado = TemaDashboard.desde_json(tema.a_json())
+    assert recuperado.idioma_publico == "en"
+    assert recuperado.version == 1
+
+
+def test_claves_de_tema_no_cambian_sin_darse_cuenta() -> None:
+    """Hallazgo V6: `_combinar()` ignora claves desconocidas — una clave mal
+    escrita en `tema_json` se ignoraría para siempre, sin error. Esta
+    prueba compara el conjunto de campos de nivel superior contra un
+    fixture: ampliar el modelo pasa a ser un cambio consciente que
+    actualiza esta lista, no un accidente que nadie ve."""
+    campos_esperados = {
+        "colores",
+        "imagen_fondo",
+        "bombo",
+        "tablero_75",
+        "contador_bolas",
+        "reloj",
+        "numero_actual",
+        "patron_activo",
+        "imagen_premio",
+        "logo",
+        "banner_texto",
+        "pantalla_bienvenida",
+        "pantalla_cierre",
+        "juego",
+        "idioma_publico",
+        "version",
+    }
+    assert {f.name for f in dataclasses.fields(TemaDashboard)} == campos_esperados

@@ -19,11 +19,19 @@ from dataclasses import dataclass
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
+# Reexportada por compatibilidad (decisión DU-6, fase 5): `contraste()` es
+# matemática pura, sin nada de Qt, y se movió a `dominio/tema.py`. Quien ya
+# hacía `from bingo.ui.tema import contraste` sigue funcionando igual.
+from bingo.dominio.tema import contraste  # noqa: F401
+
 _PATRON_HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 DEFECTO_PRIMARIO = "#1a1a2e"
 DEFECTO_SECUNDARIO = "#e94560"
 DEFECTO_TEXTO = "#ffffff"
+# Umbral de identidad de marca (WCAG AA estándar) — distinto del umbral más
+# estricto de la transmisión (`dominio.tema.UMBRAL_CONTRASTE_TRANSMISION`,
+# 7:1, decisión DU-6): esta pantalla no la ve el público en un móvil.
 UMBRAL_CONTRASTE_AA = 4.5
 
 
@@ -31,26 +39,6 @@ def _validar_color(color: str | None, defecto: str) -> str:
     if color and _PATRON_HEX.match(color):
         return color
     return defecto
-
-
-def _canal_lineal(canal_srgb: float) -> float:
-    if canal_srgb <= 0.03928:
-        return canal_srgb / 12.92
-    return ((canal_srgb + 0.055) / 1.055) ** 2.4
-
-
-def _luminancia_relativa(color_hex: str) -> float:
-    r, g, b = (int(color_hex[i : i + 2], 16) / 255 for i in (1, 3, 5))
-    r, g, b = _canal_lineal(r), _canal_lineal(g), _canal_lineal(b)
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b
-
-
-def contraste(color_a: str, color_b: str) -> float:
-    """Razón de contraste WCAG entre dos colores `#RRGGBB`."""
-    l1 = _luminancia_relativa(color_a)
-    l2 = _luminancia_relativa(color_b)
-    claro, oscuro = max(l1, l2), min(l1, l2)
-    return (claro + 0.05) / (oscuro + 0.05)
 
 
 @dataclass(frozen=True, slots=True)
