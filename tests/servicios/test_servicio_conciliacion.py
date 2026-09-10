@@ -123,3 +123,69 @@ def test_generar_reporte_pdf(con: sqlite3.Connection, tmp_path: Path) -> None:
     ruta = servicio_conciliacion.generar_reporte_pdf(con, evento.id, tmp_path / "c.pdf", _TEXTOS)
     assert ruta.exists()
     assert ruta.stat().st_size > 0
+
+
+def _evento_con_ronda_y_ganador(con: sqlite3.Connection):
+    from factorias import crear_ganador, crear_patron, crear_ronda
+
+    evento, cartones = _evento_con_cartones(con)
+    repo_carton.actualizar_estado(con, cartones[0].id, "vendido")
+    repo_comprador.crear(con, Comprador(carton_id=cartones[0].id, nombre="Ana"))
+    patron = crear_patron(con)
+    ronda = crear_ronda(con, evento.id, patron.id, orden=1, nombre="Ronda 1")
+    crear_ganador(con, ronda.id, cartones[0].id, bola_numero=7, decision="unico")
+    return evento, ronda, cartones[0]
+
+
+def test_generar_reporte_evento_excel_tiene_hoja_de_rondas(
+    con: sqlite3.Connection, tmp_path: Path
+) -> None:
+    evento, _ronda, carton = _evento_con_ronda_y_ganador(con)
+    ruta = servicio_conciliacion.generar_reporte_evento_excel(
+        con, evento.id, tmp_path / "r.xlsx", _TEXTOS
+    )
+    import openpyxl
+
+    wb = openpyxl.load_workbook(ruta)
+    assert "Rondas" in wb.sheetnames
+    filas = list(wb["Rondas"].iter_rows(min_row=2, values_only=True))
+    assert any(carton.codigo in fila for fila in filas)
+
+
+def test_generar_reporte_evento_excel_sin_contacto_por_defecto(
+    con: sqlite3.Connection, tmp_path: Path
+) -> None:
+    evento, _ronda, _carton = _evento_con_ronda_y_ganador(con)
+    ruta = servicio_conciliacion.generar_reporte_evento_excel(
+        con, evento.id, tmp_path / "r.xlsx", _TEXTOS
+    )
+    import openpyxl
+
+    wb = openpyxl.load_workbook(ruta)
+    encabezados_rondas = [c.value for c in next(wb["Rondas"].iter_rows(min_row=1, max_row=1))]
+    assert "telefono" not in encabezados_rondas
+
+
+def test_generar_reporte_evento_pdf_no_lleva_contacto(
+    con: sqlite3.Connection, tmp_path: Path
+) -> None:
+    evento, _ronda, _carton = _evento_con_ronda_y_ganador(con)
+    ruta = servicio_conciliacion.generar_reporte_evento_pdf(
+        con, evento.id, tmp_path / "r.pdf", _TEXTOS
+    )
+    assert ruta.exists()
+    assert ruta.stat().st_size > 0
+
+
+def test_generar_reporte_evento_sin_ganadores_lista_la_ronda_vacia(
+    con: sqlite3.Connection, tmp_path: Path
+) -> None:
+    from factorias import crear_patron, crear_ronda
+
+    evento, _cartones = _evento_con_cartones(con)
+    patron = crear_patron(con)
+    crear_ronda(con, evento.id, patron.id, orden=1, nombre="Ronda sin ganador")
+    ruta = servicio_conciliacion.generar_reporte_evento_pdf(
+        con, evento.id, tmp_path / "r.pdf", _TEXTOS
+    )
+    assert ruta.exists()

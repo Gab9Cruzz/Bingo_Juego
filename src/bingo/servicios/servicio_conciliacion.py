@@ -25,7 +25,7 @@ from pathlib import Path
 
 from bingo.dominio.dinero import formatear
 from bingo.impresion import reporte
-from bingo.persistencia import repo_carton, repo_comprador, repo_evento
+from bingo.persistencia import repo_carton, repo_comprador, repo_evento, repo_ganador, repo_ronda
 from bingo.persistencia.conexion import transaccion
 from bingo.utilidades.errores import ErrorNoEncontrado, ErrorValidacion
 
@@ -161,3 +161,89 @@ def generar_reporte_pdf(
     resumen = _resumen(conciliacion, idioma)
     advertencia = textos.get("advertencia_discrepancia") if conciliacion.discrepancia else None
     return reporte.reporte_conciliacion_pdf(resumen, ruta_destino, textos, advertencia=advertencia)
+
+
+def _filas_rondas(
+    con: sqlite3.Connection, evento_id: int, *, incluir_contacto: bool
+) -> list[dict[str, object]]:
+    """Una fila por ganador **no anulado** (tarea 4.11): un ganador anulado
+    es un hecho descartado por el operador, no algo que la organización
+    necesite ver en el reporte que se le entrega. Datos de contacto solo
+    con la casilla marcada (decisión UC-3 de la fase 4) — el reporte del
+    evento lleva nombres de personas tanto como el de conciliación."""
+    filas: list[dict[str, object]] = []
+    for ronda in repo_ronda.listar_por_evento(con, evento_id):
+        ganadores = [
+            g for g in repo_ganador.listar_por_ronda(con, ronda.id) if g.anulado_en is None
+        ]
+        if not ganadores:
+            filas.append(
+                {
+                    "ronda": ronda.nombre,
+                    "premio": ronda.premio_nombre or "",
+                    "codigo": "",
+                    "comprador": "",
+                    "decision": "",
+                }
+            )
+            continue
+        for ganador in ganadores:
+            carton = repo_carton.obtener(con, ganador.carton_id)
+            comprador = (
+                repo_comprador.obtener_por_carton(con, ganador.carton_id, incluir_anulados=True)
+                if carton is not None
+                else None
+            )
+            fila: dict[str, object] = {
+                "ronda": ronda.nombre,
+                "premio": ronda.premio_nombre or "",
+                "codigo": carton.codigo if carton is not None else "?",
+                "comprador": comprador.nombre if comprador is not None else "",
+                "decision": ganador.decision or "",
+            }
+            if incluir_contacto and comprador is not None:
+                fila["telefono"] = comprador.telefono
+                fila["cedula"] = comprador.cedula
+                fila["correo"] = comprador.correo
+            filas.append(fila)
+    return filas
+
+
+def generar_reporte_evento_excel(
+    con: sqlite3.Connection,
+    evento_id: int,
+    ruta_destino: Path,
+    textos: Mapping[str, str],
+    *,
+    idioma: str = "es",
+    incluir_contacto: bool = False,
+) -> Path:
+    """El reporte del evento (contrato de la fase 5, §5.9): lo mismo que
+    `generar_reporte_excel`, más una hoja `Rondas` con los ganadores."""
+    conciliacion = calcular(con, evento_id)
+    resumen = _resumen(conciliacion, idioma)
+    advertencia = textos.get("advertencia_discrepancia") if conciliacion.discrepancia else None
+    filas_cartones = _filas_detalle(con, evento_id, incluir_contacto=incluir_contacto)
+    filas_rondas = _filas_rondas(con, evento_id, incluir_contacto=incluir_contacto)
+    return reporte.reporte_evento_excel(
+        resumen, filas_cartones, filas_rondas, ruta_destino, textos, advertencia=advertencia
+    )
+
+
+def generar_reporte_evento_pdf(
+    con: sqlite3.Connection,
+    evento_id: int,
+    ruta_destino: Path,
+    textos: Mapping[str, str],
+    *,
+    idioma: str = "es",
+) -> Path:
+    """Nunca datos de contacto (decisión UC-3): es el resumen que puede
+    circular fuera del control del operador."""
+    conciliacion = calcular(con, evento_id)
+    resumen = _resumen(conciliacion, idioma)
+    advertencia = textos.get("advertencia_discrepancia") if conciliacion.discrepancia else None
+    filas_rondas = _filas_rondas(con, evento_id, incluir_contacto=False)
+    return reporte.reporte_evento_pdf(
+        resumen, filas_rondas, ruta_destino, textos, advertencia=advertencia
+    )

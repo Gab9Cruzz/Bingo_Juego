@@ -281,3 +281,20 @@ el plan completo:
   `servicio_rondas.reabrir_ronda` (hallazgo V5/E-16): cerrar avanza sola a
   la siguiente pendiente, y una ronda cerrada se puede volver a abrir desde
   el selector, invalidando el acta si ya se había generado.
+- **El hash del acta se calcula sobre una carga canónica, nunca sobre los
+  bytes del PDF (decisión D7).** `dominio/acta.py::carga_canonica` ordena
+  los ganadores por código antes de serializar — leerlos de la base en
+  otro orden no puede cambiar el hash. Empieza por `"acta/v1"` (hallazgo
+  E-5): el verificador (`servicio_actas.verificar_acta`) queda listo para
+  una v2 futura sin invalidar las actas ya emitidas.
+- **El nombre de archivo del acta va por `ronda_id`, no por `orden`
+  (hallazgo C6).** `orden` es mutable (`servicio_rondas.reordenar`); nombrar
+  por él haría que reordenar rondas sobrescribiera el acta de una con la de
+  otra.
+- **El reporte del evento (fase 5) extiende el de conciliación (fase 4) en
+  vez de duplicar la infraestructura de Excel/PDF.**
+  `servicio_conciliacion.generar_reporte_evento_excel/pdf` reutiliza
+  `_resumen`/`_filas_detalle` y solo añade `_filas_rondas` (ganadores no
+  anulados, agrupados por ronda); `impresion/reporte.py` gana
+  `reporte_evento_excel/pdf` con una hoja/sección "Rondas" más, mismo
+  `_escribir_seguro`.

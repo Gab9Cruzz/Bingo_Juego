@@ -235,3 +235,126 @@ def reporte_conciliacion_pdf(
     lienzo.showPage()
     lienzo.save()
     return ruta_destino
+
+
+# ── Reporte de evento (contrato de la fase 5, §5.9) ──
+#
+# Extiende el reporte de conciliación de la fase 4 con una hoja de rondas y
+# ganadores — lo que la organización recibe al cerrar el evento. Mismo
+# `_escribir_seguro` para nombres de comprador/código (hallazgo A5): el
+# reporte del evento lleva nombres de personas tanto como el de
+# conciliación.
+
+
+def reporte_evento_excel(
+    resumen: Mapping[str, object],
+    filas_cartones: Sequence[Mapping[str, object]],
+    filas_rondas: Sequence[Mapping[str, object]],
+    ruta_destino: Path,
+    textos: Mapping[str, str],
+    *,
+    advertencia: str | None = None,
+) -> Path:
+    """Tres hojas: `Resumen`, `Detalle` (cartones) y `Rondas` (una fila por
+    ganador — `servicio_conciliacion` decide qué columnas trae cada fila,
+    igual que en `reporte_conciliacion_excel`, hallazgo E-M11)."""
+    libro = Workbook()
+    hoja_resumen = libro.active
+    hoja_resumen.title = textos.get("hoja_resumen", "Resumen")[:_LONGITUD_MAXIMA_NOMBRE_HOJA]
+
+    fila = 1
+    for clave, valor in resumen.items():
+        hoja_resumen.cell(row=fila, column=1, value=textos.get(f"etiqueta_{clave}", clave))
+        _escribir_seguro(hoja_resumen, fila, 2, valor)
+        fila += 1
+    if advertencia:
+        fila += 1
+        celda = hoja_resumen.cell(row=fila, column=1, value=advertencia)
+        celda.font = Font(bold=True, color="C0392B")
+    hoja_resumen.column_dimensions["A"].width = 34
+    hoja_resumen.column_dimensions["B"].width = 20
+
+    _agregar_hoja_de_filas(libro, "hoja_detalle", "Detalle", filas_cartones, textos)
+    _agregar_hoja_de_filas(libro, "hoja_rondas", "Rondas", filas_rondas, textos)
+
+    ruta_destino.parent.mkdir(parents=True, exist_ok=True)
+    libro.save(ruta_destino)
+    return ruta_destino
+
+
+def _agregar_hoja_de_filas(
+    libro: Workbook,
+    clave_titulo: str,
+    titulo_defecto: str,
+    filas: Sequence[Mapping[str, object]],
+    textos: Mapping[str, str],
+) -> None:
+    nombre_hoja = textos.get(clave_titulo, titulo_defecto)[:_LONGITUD_MAXIMA_NOMBRE_HOJA]
+    hoja = libro.create_sheet(nombre_hoja)
+    if filas:
+        columnas = list(filas[0].keys())
+        for columna_indice, clave in enumerate(columnas, start=1):
+            texto = textos.get(f"columna_{clave}", clave)
+            hoja.cell(row=1, column=columna_indice, value=texto).font = Font(bold=True)
+        for fila_indice, datos in enumerate(filas, start=2):
+            for columna_indice, clave in enumerate(columnas, start=1):
+                _escribir_seguro(hoja, fila_indice, columna_indice, datos.get(clave))
+    hoja.freeze_panes = "A2"
+
+
+def reporte_evento_pdf(
+    resumen: Mapping[str, object],
+    filas_rondas: Sequence[Mapping[str, object]],
+    ruta_destino: Path,
+    textos: Mapping[str, str],
+    *,
+    advertencia: str | None = None,
+) -> Path:
+    """Resumen de una página + una fila por ganador — nunca datos de
+    contacto (decisión UC-3 de la fase 4): el PDF es lo que puede circular
+    fuera del control del operador."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas as pdf_canvas
+
+    ruta_destino.parent.mkdir(parents=True, exist_ok=True)
+    lienzo = pdf_canvas.Canvas(str(ruta_destino), pagesize=A4)
+    ancho, alto = A4
+    y = alto - 60
+
+    lienzo.setFont("Helvetica-Bold", 16)
+    lienzo.drawString(40, y, textos.get("titulo", "Reporte del evento"))
+    y -= 30
+
+    lienzo.setFont("Helvetica", 11)
+    for clave, valor in resumen.items():
+        etiqueta = textos.get(f"etiqueta_{clave}", clave)
+        lienzo.drawString(40, y, f"{etiqueta}: {valor}")
+        y -= 18
+
+    if advertencia:
+        y -= 12
+        lienzo.setFillColorRGB(0.75, 0.1, 0.1)
+        lienzo.setFont("Helvetica-Bold", 11)
+        lienzo.drawString(40, y, advertencia)
+        lienzo.setFillColorRGB(0, 0, 0)
+        y -= 18
+
+    y -= 12
+    lienzo.setFont("Helvetica-Bold", 13)
+    lienzo.drawString(40, y, textos.get("titulo_rondas", "Rondas y ganadores"))
+    y -= 20
+    lienzo.setFont("Helvetica", 10)
+    if not filas_rondas:
+        lienzo.drawString(40, y, textos.get("sin_rondas", "Sin rondas jugadas"))
+    for datos in filas_rondas:
+        texto = " · ".join(str(v) for v in datos.values() if v not in (None, ""))
+        lienzo.drawString(40, y, texto)
+        y -= 16
+        if y < 60:
+            lienzo.showPage()
+            y = alto - 60
+            lienzo.setFont("Helvetica", 10)
+
+    lienzo.showPage()
+    lienzo.save()
+    return ruta_destino

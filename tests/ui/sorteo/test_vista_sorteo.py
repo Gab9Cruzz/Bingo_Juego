@@ -264,6 +264,30 @@ def test_reabrir_ronda_reconstruye_el_motor_y_conserva_marcado(
     assert vista._boton_extraer.isEnabled()  # noqa: SLF001
 
 
+def test_generar_y_verificar_acta(
+    qapp, con: sqlite3.Connection, evento_creado, lote_creado, monkeypatch
+) -> None:
+    i18n.cargar("es")
+    monkeypatch.setattr("bingo.ui.sorteo.vista_sorteo.confirmar", lambda *a, **k: True)
+    patron = crear_patron(con, mascaras=[mascara([(0, 0)])])
+    carton = crear_carton(con, evento_creado.id, lote_creado.id, semilla=1, estado="vendido")
+    crear_comprador(con, carton.id)
+    ronda = crear_ronda(con, evento_creado.id, patron.id)
+
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento_creado, espacio)
+    vista._iniciar_ronda()  # noqa: SLF001
+    vista._cerrar_ronda()  # noqa: SLF001
+
+    assert not vista._boton_generar_acta.isHidden()  # noqa: SLF001
+    vista._generar_acta()  # noqa: SLF001
+
+    recargada = repo_ronda.obtener(con, ronda.id)
+    assert recargada.acta_hash is not None
+
+    vista._verificar_acta()  # noqa: SLF001  # no debe lanzar
+
+
 def test_modo_vivo_delega_en_espacio_evento(
     qapp, con: sqlite3.Connection, evento_creado, lote_creado
 ) -> None:

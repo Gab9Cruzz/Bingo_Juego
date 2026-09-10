@@ -84,3 +84,22 @@ def asegurar_clave_evento(con: sqlite3.Connection, evento_id: int) -> str:
         repo_evento.actualizar_clave(con, evento_id, clave)
         repo_auditoria.registrar(con, evento_id, "evento.clave_generada")
     return clave
+
+
+def finalizar_evento(con: sqlite3.Connection, evento_id: int) -> None:
+    """`en_curso -> finalizado` (contrato §5.9, tarea 4.13): un evento no
+    se termina con una ronda a medias — exige que **todas** las rondas
+    estén `cerrada`. La vista, tras esto, ofrece generar el reporte del
+    evento y el respaldo (tareas 4.11/4.12); este servicio solo valida y
+    hace la transición."""
+    from bingo.persistencia import repo_ronda
+
+    actual = repo_evento.obtener(con, evento_id)
+    if actual is None:
+        raise ErrorNoEncontrado("error.no_encontrado", parametros={"id": evento_id})
+    sin_cerrar = [r for r in repo_ronda.listar_por_evento(con, evento_id) if r.estado != "cerrada"]
+    if sin_cerrar:
+        raise ErrorValidacion(
+            "eventos.error.rondas_sin_cerrar", parametros={"cantidad": len(sin_cerrar)}
+        )
+    cambiar_estado(con, evento_id, "finalizado")

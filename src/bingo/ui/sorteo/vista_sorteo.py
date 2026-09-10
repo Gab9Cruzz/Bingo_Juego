@@ -55,7 +55,7 @@ from bingo.persistencia import (
     repo_patron,
     repo_ronda,
 )
-from bingo.servicios import servicio_ganadores, servicio_rondas
+from bingo.servicios import servicio_actas, servicio_ganadores, servicio_rondas
 from bingo.ui import sonido
 from bingo.ui.atajos import ATAJOS
 from bingo.ui.dialogos import FranjaError, confirmar
@@ -111,6 +111,10 @@ class VistaSorteo(QWidget):
         self._etiqueta_premio = QLabel()
         self._boton_reabrir_ronda = QPushButton()
         self._boton_reabrir_ronda.clicked.connect(self._reabrir_ronda)
+        self._boton_generar_acta = QPushButton()
+        self._boton_generar_acta.clicked.connect(self._generar_acta)
+        self._boton_verificar_acta = QPushButton()
+        self._boton_verificar_acta.clicked.connect(self._verificar_acta)
 
         # -- Zona A ----------------------------------------------------------
         self._etiqueta_numero = QLabel("—")
@@ -223,6 +227,8 @@ class VistaSorteo(QWidget):
         cabecera.addWidget(self._rejilla_patron)
         cabecera.addWidget(self._etiqueta_premio)
         cabecera.addWidget(self._boton_reabrir_ronda)
+        cabecera.addWidget(self._boton_generar_acta)
+        cabecera.addWidget(self._boton_verificar_acta)
         cabecera.addStretch()
 
         distribucion = QVBoxLayout(self)
@@ -424,6 +430,10 @@ class VistaSorteo(QWidget):
         self._boton_reabrir_ronda.setEnabled(
             estado == "cerrada" and not self._motor.hay_ronda_en_juego
         )
+        self._boton_generar_acta.setVisible(estado == "cerrada")
+        self._boton_verificar_acta.setVisible(
+            estado == "cerrada" and self._ronda_actual is not None
+        )
 
     # -- ciclo de vida de la ronda -------------------------------------------
 
@@ -518,6 +528,34 @@ class VistaSorteo(QWidget):
             return
         self._franja.mostrar_info(t("sorteo.exito.ronda_reabierta", nombre=ronda.nombre))
         self._cargar_lista_rondas(seleccionar_id=ronda.id)
+
+    # -- actas (contrato §5.9, decisión D7; verificador, tarea 4.20) ---------
+
+    def _generar_acta(self) -> None:
+        if self._ronda_actual is None:
+            return
+        try:
+            ruta = servicio_actas.generar_acta(self._con, self._ronda_actual.id)
+        except ErrorBingo as error:
+            self._franja.mostrar_error(error)
+            return
+        self._franja.mostrar_exito(t("sorteo.exito.acta_generada", ruta=str(ruta)))
+        self._cargar_lista_rondas(seleccionar_id=self._ronda_actual.id)
+
+    def _verificar_acta(self) -> None:
+        if self._ronda_actual is None:
+            return
+        try:
+            resultado = servicio_actas.verificar_acta(self._con, self._ronda_actual.id)
+        except ErrorBingo as error:
+            self._franja.mostrar_error(error)
+            return
+        if resultado == "coincide":
+            self._franja.mostrar_exito(t("sorteo.acta.coincide"))
+        elif resultado == "no_coincide":
+            self._franja.mostrar(t("sorteo.acta.no_coincide"), nivel="error")
+        else:
+            self._franja.mostrar_info(t("sorteo.acta.sin_generar"))
 
     # -- extracción -----------------------------------------------------------
 
@@ -758,6 +796,8 @@ class VistaSorteo(QWidget):
         self._boton_iniciar.setText(t("sorteo.accion.iniciar_ronda"))
         self._boton_cerrar_ronda.setText(t("sorteo.accion.cerrar_ronda"))
         self._boton_reabrir_ronda.setText(t("sorteo.accion.reabrir_ronda"))
+        self._boton_generar_acta.setText(t("sorteo.accion.generar_acta"))
+        self._boton_verificar_acta.setText(t("sorteo.accion.verificar_acta"))
         self._etiqueta_ronda.setText(t("sorteo.cabecera.ronda"))
         self._campo_codigo.setPlaceholderText(t("sorteo.buscador.placeholder"))
         self._boton_consultar.setText(t("sorteo.accion.consultar"))
