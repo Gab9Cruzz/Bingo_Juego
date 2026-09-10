@@ -57,14 +57,17 @@ Formato: **qué** · por qué · esfuerzo (humano / CC) · prioridad · depende 
   visualmente el peso Bold de las fuentes variables empaquetadas (ver más
   abajo, "Verificar el peso Bold...").
 
-- **Plan de segunda máquina.** El alcance §8 acepta "equipo único" como punto de
-  fallo y ninguna fase lo mitiga. Mínimo aceptable: probar que un respaldo `.zip`
-  restaura en un segundo equipo y abre el evento donde quedó.
-  Esfuerzo: M / S · Depende de: fase 5 (respaldos).
+- ~~**Plan de segunda máquina.**~~ Entra en la fase 5. La revisión encontró que no
+  existe ninguna función de restauración y que `docs/runbook.md:9` **ya se la promete
+  al operador** en el código de salida 3. `servicio_respaldos.restaurar` + el criterio
+  de aceptación nuevo ("el `.zip` de un evento a mitad de ronda se restaura en un
+  segundo equipo limpio y el sorteo continúa en la bola N+1") son la tarea 4.12.
 
-- **Integración continua.** `ruff` + `pytest -m "not lento"` en cada push. No hay
-  repositorio remoto todavía; se crea el workflow cuando lo haya.
-  Esfuerzo: S / S · Depende de: repositorio remoto.
+- ~~**Integración continua.**~~ **La nota estaba obsoleta.** Sí hay repositorio
+  remoto (`github.com/Gab9Cruzz/Bingo_Juego.git`), con `main` y
+  `feature/fase-2-cartones` publicadas y `dev` sin publicar. 433 pruebas que solo
+  existen como promesa en un portátil. Entra en la fase 5 como tarea 4.26
+  (`ruff` + `pytest -m "not lento"` sobre `windows-latest`, y publicar `dev`).
 
 ## P3 — v2 y más allá
 
@@ -269,3 +272,111 @@ contrato; todas son mejoras de robustez o de pulido que quedan pendientes.
   puerta. TD-7: pegar un bloque tabulado del portapapeles como tercera vía de
   entrada.
   Esfuerzo: S/S, S/M, S/S respectivamente · Depende de: nada.
+
+## Añadidos por `/gstack-autoplan` sobre `docs/Fase_5/Contrato_Fase5.md` (2026-09-10)
+
+Diferidos con razón escrita durante las tres fases de revisión del plan de la fase 5.
+Lo aceptado está en `docs/Fase_5/Plan_Implementacion_Fase5.md` §4; esto es lo que
+**no** entró.
+
+- **Transmisión como página web local consumida por OBS Browser Source** (expansión
+  E7, y "Approach C" del §A.4). Es la ruta que usa el sector (BINGAZO publica un
+  plugin de OBS). Elimina de golpe la captura en negro por aceleración por hardware,
+  el orden de monitores que Windows reordena, el DPI fraccional, `escala.py` entero y
+  la necesidad misma de un segundo monitor, y regala canal alfa. Se descartó para la
+  v1 por tres razones escritas: es una segunda pila de render (HTTP + HTML/CSS/JS +
+  websocket) en un proyecto cuyo documento técnico §7 define el tema como posiciones
+  de widgets Qt; duplica el editor de tema que la fase 4 acaba de entregar; y abre un
+  puerto en el equipo del operador, que es una máquina con datos personales. **La
+  decisión D14 quedó contingente al spike de OBS:** si OBS no captura la ventana Qt
+  limpiamente, esto deja de ser v2 y pasa a ser la salida de la v1.
+  Esfuerzo: 8 d / ~2 h · Depende de: el resultado del spike de OBS.
+
+- **Grabar la locución desde la aplicación** (expansión E6). La decisión D5 deja la
+  puerta abierta sin código: si Gabriel copia `01.wav … 75.wav` a
+  `medios/locucion/<idioma>/`, el proveedor pregrabado los usa y el TTS queda de
+  respaldo. Grabarlos *desde* la app (micrófono, ensayo, reintento por número) es un
+  módulo nuevo con almacenamiento propio y no está en el radio de la fase.
+  Esfuerzo: 3 d / ~1 h · Depende de: nada.
+
+- **Cifrado real del respaldo (AES) — sigue P1, ahora con la dependencia nombrada.**
+  La decisión D11 responde al P1 de la fase 4 con un `RESPALDO_LEEME.txt` dentro del
+  `.zip` y un aviso en pantalla, y añade una sexta copia de datos personales al disco.
+  La dependencia concreta es **`pyzipper`** (AES-ZIP en Python puro): la biblioteca
+  estándar solo *lee* ZipCrypto, no lo escribe, y ZipCrypto está roto de todos modos.
+  El argumento "una dependencia nueva" es más débil de lo que parecía — el proyecto ya
+  empaqueta PySide6, ReportLab, openpyxl y Pillow, y PyInstaller maneja `pyzipper` sin
+  drama. **La razón real para no cifrar hoy es de alcance, no técnica**, y así queda
+  escrito: riesgo asumido, no limitación.
+  Esfuerzo: M / S · Depende de: nada.
+
+- **Estadísticas del evento** (bolas más frecuentes, duración media de ronda).
+  Descartado, no diferido: métrica autorreferencial que nadie pidió y que no cambia
+  ninguna decisión.
+
+- **Los tres bloqueadores legales P1 siguen sin empezar, y ahora con una organización
+  agendada.** `docs/decisiones.md` (fase 3) dice "a partir de esta fase hay una
+  organización con evento real agendado". Eso convierte los tres P1 de arriba
+  (premios en efectivo en Ecuador, políticas de Meta/YouTube, retención LOPDP) de
+  riesgo aceptado a reloj corriendo. Ninguno depende de una línea de código; los tres
+  caben en dos semanas de calendario **en paralelo** al desarrollo. El plan de la
+  fase 5 los lleva al gate como desafío UC-2: **`v1.0.0` significa "el software está
+  listo", no "puedes cobrar entradas".**
+
+- **Los tres spikes P1 de de-riesgo siguen sin correr, dos fases después de cuando
+  tocaban.** El de imprenta debía correr *antes* de escribir el motor de render de la
+  fase 3, que ya está cerrada: hoy un rechazo de la imprenta es retrabajo de una fase
+  cerrada. El de latencia produce un número que, según el alcance §6.1, **va impreso
+  en el cartón** — y `impresion/plantilla.py::TEXTO_INFERIOR_DEFECTO` dice hoy "que
+  tiene retraso" sin cifra. El de OBS sostiene la tarea 4.9 entera. Van al gate como
+  desafío UC-1.
+
+- ~~**Panel de auditoría del evento.**~~ Aceptado como expansión E3 de la fase 5
+  (tarea 4.19): la fase 5 multiplica por diez lo que se escribe en auditoría y hoy
+  nadie puede leerlo sin abrir la base con un cliente SQL.
+
+- ~~**Bandera `modo_vivo`.**~~ Entra en la fase 5 (tarea 4.27 + decisión DU-12), con
+  la regla escrita: degrada a franja solo los errores **no terminales**; base
+  corrupta, migración fallida y sin permisos siguen siendo modales incluso en directo.
+
+- ~~**Registro central de acciones y atajos.**~~ Entra en la fase 5 (decisión D12):
+  tres ámbitos de teclado (global, sorteo, transmisión) y el mismo `Ctrl+N` ya
+  significa dos cosas distintas según la vista.
+
+- ~~**`ui/espacio_evento.py` deja de escalar por apéndice.**~~ Entra en la fase 5
+  (decisión D10 + DU-16): el riel se agrupa en Preparación y Evento, con las ocho
+  secciones finales enumeradas en orden.
+
+- **`ronda.premio_valor` (REAL) se acepta como columna muerta permanente.** La
+  revisión llegó a proponer reconstruir `ronda` en la 004 para eliminarla, y se
+  descartó al verificar que `003_fase4.sql:95` ya añadió `premio_valor_centavos` y que
+  E4b **ya se cumple desde la fase 4**: reconstruir la tabla entera —ahora que sí
+  puede tener filas reales— solo para borrar una columna que nadie lee es riesgo puro
+  a cambio de estética. Se elimina de paso la próxima vez que `ronda` se reconstruya
+  por una razón de verdad.
+
+### Del gate de la Fase 5 (decisiones tomadas por `/gstack-autoplan`, reversibles)
+
+- **Commit-reveal de la semilla del bombo — P1, recomendado y NO incluido.** La
+  revisión CEO lo propuso como el mayor movimiento de confianza disponible en todo el
+  producto, y la vía técnica está verificada: `secrets.SystemRandom().seed()` es un
+  **no-op silencioso** (medido), así que la implementación es
+  `semilla = secrets.token_bytes(32)` con expansión determinista vía
+  `random.Random(int.from_bytes(semilla))` — la impredecibilidad la sigue dando
+  `secrets` en la generación, y la verificabilidad la da que la secuencia queda fijada
+  al publicar `SHA-256(semilla)` antes de la primera bola y revelar la semilla en el
+  acta. Cualquiera recomputa el sorteo.
+  **No entró** porque el alcance §7 excluye explícitamente "semilla verificable
+  publicada (commit-reveal)" de la v1 y el contrato §5.1 dice literalmente
+  `secrets.SystemRandom()`: ampliar por encima de una exclusión escrita no es decisión
+  de una revisión automática. Es la decisión del gate que más merece revertirse.
+  Esfuerzo: 1 d / ~1 h · Depende de: nada.
+
+- **Firma de código del instalador — riesgo asumido, no olvidado.** Sin certificado,
+  un `.exe` de PyInstaller en un equipo limpio produce "Windows protegió tu PC" con el
+  botón real escondido tras "Más información", y probablemente cuarentena de Defender.
+  Se decidió no comprar certificado para la v1.0.0 (coste anual y plazo de validación
+  reales, para un operador que instala en sus propios equipos y los de organizaciones
+  que ya lo conocen) y documentar el diálogo exacto en `docs/runbook.md`. **Se compra
+  el día que se distribuya a terceros que no conocen a Gabriel.**
+  Esfuerzo: S / — · Depende de: distribución a terceros.
