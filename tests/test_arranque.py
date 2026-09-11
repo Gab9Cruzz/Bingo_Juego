@@ -45,6 +45,39 @@ def test_forzar_instancia_funciona(bingo_home) -> None:
     assert codigo == 0
 
 
+def test_ensayo_deja_un_evento_de_prueba_listo(bingo_home) -> None:
+    """Tarea 4.17: `--ensayo` corre dentro del arranque normal, no como un
+    camino de salida temprana como `--restaurar` — al terminar, la app
+    arranca con el evento de práctica ya montado."""
+    from bingo.servicios import servicio_ensayo
+
+    codigo = modulo_principal.principal(["--ensayo"])
+    assert codigo == 0
+
+    con = sqlite3.connect(bingo_home / "datos" / "bingo.db")
+    con.row_factory = sqlite3.Row
+    fila = con.execute(
+        "SELECT COUNT(*) AS n FROM evento WHERE nombre = ?", (servicio_ensayo.NOMBRE_EVENTO,)
+    ).fetchone()
+    con.close()
+    assert fila["n"] == 1
+
+
+def test_ensayo_dos_veces_no_duplica_el_evento(bingo_home) -> None:
+    from bingo.servicios import servicio_ensayo
+
+    modulo_principal.principal(["--ensayo"])
+    modulo_principal.principal(["--ensayo", "--forzar-instancia"])
+
+    con = sqlite3.connect(bingo_home / "datos" / "bingo.db")
+    con.row_factory = sqlite3.Row
+    fila = con.execute(
+        "SELECT COUNT(*) AS n FROM evento WHERE nombre = ?", (servicio_ensayo.NOMBRE_EVENTO,)
+    ).fetchone()
+    con.close()
+    assert fila["n"] == 1
+
+
 def test_arranque_limpia_lote_huerfano_de_una_sesion_anterior(bingo_home) -> None:
     """Simula un proceso muerto a mitad de `generar_lote` (fase 2, hallazgo Eng
     #5): un lote sin `completado_en` no debe sobrevivir al siguiente arranque.

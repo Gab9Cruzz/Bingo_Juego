@@ -50,6 +50,7 @@ def principal(argv: list[str] | None = None) -> int:
     reiniciar_datos = "--reiniciar-datos" in argv
     forzar_instancia = "--forzar-instancia" in argv
     ruta_restaurar = _valor_de_argumento(argv, "--restaurar")
+    modo_ensayo = "--ensayo" in argv
 
     # QApplication va PRIMERO (enmienda E7a): un QMessageBox sin QApplication
     # viva aborta el proceso, así que cualquier diálogo de error de más abajo
@@ -230,6 +231,21 @@ def principal(argv: list[str] | None = None) -> int:
         logging.getLogger("bingo").warning(
             "No se pudo precargar el catálogo de patrones del sistema: %s", error.detalle
         )
+
+    # Tarea 4.17 (expansión E1): `--ensayo` monta el evento de práctica
+    # DESPUÉS del catálogo de patrones del sistema (los necesita para las
+    # tres rondas) y antes de mostrar la ventana — así el operador arranca
+    # ya viendo el evento listo, sin un paso manual de más. Idempotente por
+    # diseño: un fallo aquí no debe impedir arrancar la app con normalidad.
+    if modo_ensayo:
+        from bingo.servicios import servicio_ensayo
+
+        try:
+            servicio_ensayo.ejecutar(con)
+        except ErrorBingo as error:
+            logging.getLogger("bingo").warning(
+                "No se pudo preparar el evento de ensayo: %s", error.detalle
+            )
 
     from bingo.ui.tema import aplicar_tema_operador
 

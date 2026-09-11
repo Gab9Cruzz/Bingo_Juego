@@ -477,3 +477,17 @@ el plan completo:
   `_cerrar_ronda()` — ese pide confirmación si quedan bolas (hallazgo C7),
   y esperar un clic que nadie va a dar congelaría la transmisión en
   "reclamo vencido" para siempre.
+- **Modo ensayo (tarea 4.17, expansión E1, criterio de aceptación §5.12):
+  `python -m bingo --ensayo` reutiliza servicios existentes de punta a
+  punta, cero SQL propio.** Nuevo `servicio_ensayo.py`: crea (si no
+  existe) una organización y evento fijos por nombre, genera 200
+  cartones, los marca "impreso" uno por uno (paso que el ensayo se salta
+  de verdad, pero `marcar_vendidos_por_rango` exige un estado vendible) y
+  los vende por rango con compradores provisionales, y arma tres rondas
+  con patrones del sistema distintos. **Idempotente por diseño**
+  (criterio de aceptación explícito del plan: correr `--ensayo` dos veces
+  deja exactamente un evento de prueba) — busca por nombre fijo antes de
+  crear nada, y si el evento ya existe devuelve el mismo sin tocar la
+  base. Llama a `servicio_patrones.asegurar_patrones_sistema` por su
+  cuenta en vez de asumir que `__main__.principal()` ya la corrió antes —
+  un servicio no debe depender del orden de quien lo invoca.
