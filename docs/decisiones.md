@@ -516,3 +516,40 @@ el plan completo:
   ganan controles en el editor de Tema.** Antes de esta tarea existían en
   el modelo y en la validación desde 4.1/4.24, pero no había ninguna
   manera de cambiarlos sin editar `tema_json` a mano.
+- **Empaquetado (tarea 4.14, contrato §5.11): `--onedir`, no
+  `--onefile`.** Un solo binario metería toda la app en un directorio
+  temporal que Windows Defender reescanea en cada arranque — en el
+  equipo del evento, sin internet, eso es un arranque de varios
+  segundos que `--onedir` evita. `empaquetado/bingo.spec` fija
+  `hiddenimports` explícitos (`QtMultimedia`, `QtTextToSpeech`, `QtPdf`)
+  para los módulos que `ui/sonido.py` carga por nombre — PyInstaller no
+  los ve analizando el árbol de imports, y sin ellos el `.exe` arranca
+  pero esos módulos fallan en silencio la noche del evento.
+- **`--comprobar-empaquetado` (hallazgo E-12) corre antes que
+  absolutamente todo lo demás, sin `QApplication`.** Solo importa los
+  tres módulos de PySide6 cargados por nombre y verifica que las
+  migraciones/i18n/sonidos/fuentes embebidos existen — código 7 si
+  falta algo. `empaquetado/humo.py` lo ejerce contra el `.exe` real
+  recién construido (arranque en limpio) y `empaquetado/actualizacion.py`
+  contra una base en la versión de esquema 3 con datos (el criterio de
+  aceptación "las migraciones se aplican bien al actualizar una
+  instalación existente", que ningún `pytest` sobre el árbol de fuentes
+  puede cubrir porque es sobre el binario, no sobre el intérprete). Los
+  dos van en la SEMANA 1 del plan, no en la última — PyInstaller con
+  estos módulos es célebre por fallar tarde.
+- **Versión: fuente única en `bingo.__version__` (decisión D12).**
+  `pyproject.toml` usa `dynamic = ["version"]` +
+  `[tool.setuptools.dynamic] version = {attr = "bingo.__version__"}` en
+  vez de duplicar el número; verificado forzando una versión inválida y
+  confirmando que `pip install -e .` la rechazaba (prueba de que de
+  verdad lee de ahí, no de una copia cacheada). `abrir_evento()` registra
+  `app.version` en auditoría — con qué build se jugó cada evento queda
+  escrito, no solo visible en Ajustes.
+- **El instalador (`instalador.iss`) nunca toca `%LOCALAPPDATA%\Bingo`,
+  ni al instalar ni al desinstalar.** Crearla es trabajo de
+  `asegurar_estructura()` en el primer arranque real (duplicarlo aquí
+  crearía dos dueños de la misma estructura, con permisos potencialmente
+  distintos); borrarla al desinstalar se llevaría la base de datos, los
+  respaldos y los cartones impresos de eventos reales sin que nadie lo
+  pidiera explícitamente. `PrivilegesRequired=lowest`: la app nunca
+  necesitó permisos de administrador y el instalador tampoco los pide.

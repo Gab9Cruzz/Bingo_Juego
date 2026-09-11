@@ -1,6 +1,6 @@
 [project]
 name = "bingo"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Aplicación de escritorio para montar y ejecutar bingos de 75 bolas."
 requires-python = ">=3.12"
 dependencies = [
@@ -23,6 +23,13 @@ dev = [
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+# Decisión D12 (tarea 4.14): fuente única de versión. `src/bingo/__init__.py`
+# es el único sitio donde se escribe el número — `pyproject.toml` lo lee de
+# ahí en vez de duplicarlo, y `empaquetado/bingo.spec` (PyInstaller) hace lo
+# mismo importando el paquete.
+version = { attr = "bingo.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

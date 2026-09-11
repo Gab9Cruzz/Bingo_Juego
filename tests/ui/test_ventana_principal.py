@@ -52,6 +52,25 @@ def test_gancho_restaurar_bloqueado_con_evento_abierto(
     assert len(avisos) == 1
 
 
+def test_abrir_evento_registra_la_version_en_auditoria(qapp, con: sqlite3.Connection) -> None:
+    """Decisión D12 (tarea 4.14): con qué versión se jugó cada evento queda
+    en auditoría, no solo visible en Ajustes."""
+    from bingo import __version__
+    from bingo.persistencia import repo_auditoria
+
+    i18n.cargar("es")
+    org = crear_organizacion(con)
+    evento = crear_evento(con, org.id)
+
+    ventana = VentanaPrincipal(con)
+    ventana.abrir_evento(evento)
+
+    registros = repo_auditoria.listar_por_evento(con, evento.id)
+    coincidencias = [r for r in registros if r.accion == "app.version"]
+    assert len(coincidencias) == 1
+    assert coincidencias[0].detalle == __version__
+
+
 def test_gancho_restaurar_no_referencia_la_ventana_con_fuerza(
     qapp, con: sqlite3.Connection
 ) -> None:

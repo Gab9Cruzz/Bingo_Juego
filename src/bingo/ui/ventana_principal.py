@@ -148,6 +148,14 @@ class VentanaPrincipal(QMainWindow):
         self._pila_principal.addWidget(self._espacio_evento)
         self._pila_principal.setCurrentWidget(self._espacio_evento)
 
+        # Decisión D12 (tarea 4.14): con qué versión se jugó cada evento
+        # queda en auditoría — sin esto, "¿con qué build se corrió la noche
+        # que algo salió mal?" no tiene respuesta tres semanas después.
+        from bingo import __version__
+        from bingo.persistencia import repo_auditoria
+
+        repo_auditoria.registrar(self._con, evento.id, "app.version", detalle=__version__)
+
         prefs = preferencias.cargar()
         prefs.ultimo_evento_abierto_id = evento.id
         preferencias.guardar(prefs)

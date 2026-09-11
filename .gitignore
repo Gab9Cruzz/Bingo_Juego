@@ -7,6 +7,10 @@ __pycache__/
 dist/
 build/
 *.spec
+# Excepción: el .spec de la tarea 4.14 es código fuente propio (la entrada
+# de PyInstaller), no un artefacto de build -- la regla de arriba solo
+# pretendía ignorar un .spec autogenerado en la raíz.
+!empaquetado/bingo.spec
 medios/
 .pytest_cache/
 .ruff_cache/

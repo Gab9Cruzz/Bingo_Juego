@@ -45,6 +45,25 @@ def test_forzar_instancia_funciona(bingo_home) -> None:
     assert codigo == 0
 
 
+def test_comprobar_empaquetado_no_necesita_estructura_de_datos(tmp_path) -> None:
+    """Tarea 4.14: corre antes que `asegurar_estructura()` — apunta
+    `BINGO_HOME` a una carpeta que ni siquiera existe, y aun así debe
+    devolver 0 (solo importa módulos y verifica el árbol de fuentes/paquete
+    instalado, nunca `%LOCALAPPDATA%\\Bingo`)."""
+    import os
+
+    viejo = os.environ.get("BINGO_HOME")
+    os.environ["BINGO_HOME"] = str(tmp_path / "no_existe_todavia")
+    try:
+        codigo = modulo_principal.principal(["--comprobar-empaquetado"])
+    finally:
+        if viejo is not None:
+            os.environ["BINGO_HOME"] = viejo
+        else:
+            os.environ.pop("BINGO_HOME", None)
+    assert codigo == 0
+
+
 def test_ensayo_deja_un_evento_de_prueba_listo(bingo_home) -> None:
     """Tarea 4.17: `--ensayo` corre dentro del arranque normal, no como un
     camino de salida temprana como `--restaurar` — al terminar, la app

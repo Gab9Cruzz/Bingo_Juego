@@ -5,9 +5,16 @@ que en producción no existe.
 
 Códigos de salida: 0 éxito, 2 sin permisos/estructura, 3 base corrupta,
 4 migración fallida, 5 segunda instancia, 6 restauración de respaldo fallida
-(tarea 4.12, hallazgo B4 — documentado también en `docs/runbook.md`; nunca 0:
-cero es éxito para cualquiera que invoque el proceso, incluido un instalador
-o una tarea programada).
+(tarea 4.12, hallazgo B4 — documentado también en `docs/runbook.md`), 7
+autocomprobación de empaquetado fallida (tarea 4.14, `--comprobar-empaquetado`,
+lo que ejerce `empaquetado/humo.py` contra el `.exe` real; nunca 0: cero es
+éxito para cualquiera que invoque el proceso, incluido un instalador o una
+tarea programada).
+
+**`--comprobar-empaquetado` corre antes que absolutamente todo lo demás**,
+incluida la propia `QApplication`: solo importa módulos y verifica que unos
+archivos existen, sin abrir ninguna ventana — puede correr en un runner sin
+pantalla.
 
 **`--restaurar <zip>` corre antes que todo lo demás (hallazgo E-11):**
 argumentos → `asegurar_estructura` → validar el zip → restaurar → log →
@@ -47,6 +54,18 @@ def _valor_de_argumento(argv: list[str], nombre: str) -> str | None:
 
 def principal(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
+
+    if "--comprobar-empaquetado" in argv:
+        from bingo.utilidades.comprobacion_empaquetado import comprobar
+
+        problemas = comprobar()
+        for problema in problemas:
+            print(f"[empaquetado] {problema}", file=sys.stderr)  # noqa: T201 - CLI, no logging
+        if problemas:
+            return 7
+        print("[empaquetado] OK")  # noqa: T201
+        return 0
+
     reiniciar_datos = "--reiniciar-datos" in argv
     forzar_instancia = "--forzar-instancia" in argv
     ruta_restaurar = _valor_de_argumento(argv, "--restaurar")
