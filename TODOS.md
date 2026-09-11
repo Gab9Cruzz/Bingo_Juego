@@ -63,11 +63,10 @@ Formato: **qué** · por qué · esfuerzo (humano / CC) · prioridad · depende 
   de aceptación nuevo ("el `.zip` de un evento a mitad de ronda se restaura en un
   segundo equipo limpio y el sorteo continúa en la bola N+1") son la tarea 4.12.
 
-- ~~**Integración continua.**~~ **La nota estaba obsoleta.** Sí hay repositorio
-  remoto (`github.com/Gab9Cruzz/Bingo_Juego.git`), con `main` y
-  `feature/fase-2-cartones` publicadas y `dev` sin publicar. 433 pruebas que solo
-  existen como promesa en un portátil. Entra en la fase 5 como tarea 4.26
-  (`ruff` + `pytest -m "not lento"` sobre `windows-latest`, y publicar `dev`).
+- ~~**Integración continua.**~~ Resuelto en la fase 5, tarea 4.26:
+  `.github/workflows/ci.yml` corre `ruff check` + `ruff format --check` +
+  `pytest -m "not lento"` sobre `windows-latest` en cada push/PR a `main` y
+  `dev`; `dev` ya está publicada.
 
 ## P3 — v2 y más allá
 

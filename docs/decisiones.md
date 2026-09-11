@@ -393,3 +393,9 @@ el plan completo:
   variable local simplemente salía de ámbito y el archivo se soltaba solo.
   `unlock()` no hace nada si ya estaba suelto, así que llamarlo de más (tras
   un "Restaurar" que ya lo soltó él mismo) es inocuo.
+- **Integración continua (tarea 4.26, corrección M7).**
+  `.github/workflows/ci.yml` corre `ruff check` + `ruff format --check` +
+  `pytest -m "not lento"` sobre `windows-latest` (el único sistema objetivo)
+  en cada push/PR a `main` y `dev`. `dev` estaba sin publicar desde la fase
+  1 (era un ancestro puro de `main`, sin commits propios) — se avanzó al
+  tip de `main` y se publicó.
