@@ -107,10 +107,9 @@ Formato: **qué** · por qué · esfuerzo (humano / CC) · prioridad · depende 
   `sqlite_master`.
   Esfuerzo: S / S · Depende de: primer evento real.
 
-- **Bandera `modo_vivo` para suprimir modales durante la transmisión.** Cortada de
-  la fase 1 por no tener consumidor. La define la fase 5, cuando exista la interfaz
-  de sorteo contra la que medirla.
-  Esfuerzo: S / S · Depende de: fase 5.
+- ~~**Bandera `modo_vivo` para suprimir modales durante la transmisión.**~~
+  Resuelto en la fase 5 (tarea 4.27): ver la nota de abajo, en la sección
+  de la fase 5.
 
 - **Registro central de acciones y atajos.** En la fase 1 basta un diccionario de
   módulo. Se convierte en registro cuando haya más de una superficie manejada por
@@ -334,9 +333,17 @@ Lo aceptado está en `docs/Fase_5/Plan_Implementacion_Fase5.md` §4; esto es lo 
   (tarea 4.19): la fase 5 multiplica por diez lo que se escribe en auditoría y hoy
   nadie puede leerlo sin abrir la base con un cliente SQL.
 
-- ~~**Bandera `modo_vivo`.**~~ Entra en la fase 5 (tarea 4.27 + decisión DU-12), con
-  la regla escrita: degrada a franja solo los errores **no terminales**; base
-  corrupta, migración fallida y sin permisos siguen siendo modales incluso en directo.
+- ~~**Bandera `modo_vivo`.**~~ Resuelto (fase 5, tarea 4.27 + decisión DU-12).
+  Es un atributo de `EspacioEvento` (nunca estado global de interfaz), oculta
+  riel/cabecera/franja de marca. La regla de qué se degrada quedó escrita
+  verificando, no reimplementando: cada vista atrapa `ErrorBingo` y lo pinta
+  con `FranjaError` (canal 2, nunca modal, en ningún modo — la separación es
+  del tipo de error y de qué código lo atrapa, no de una bandera en tiempo de
+  ejecución), y `dialogos.mostrar_error_modal` (canal 3: base corrupta,
+  migración fallida, sin permisos) solo se llama desde `__main__.principal()`
+  antes de que exista ningún `EspacioEvento` — estructuralmente no puede
+  degradarse. Prueba:
+  `test_modo_vivo_degrada_error_no_terminal_pero_no_uno_terminal`.
 
 - ~~**Registro central de acciones y atajos.**~~ Entra en la fase 5 (decisión D12):
   tres ámbitos de teclado (global, sorteo, transmisión) y el mismo `Ctrl+N` ya

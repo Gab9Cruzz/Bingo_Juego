@@ -399,3 +399,20 @@ el plan completo:
   en cada push/PR a `main` y `dev`. `dev` estaba sin publicar desde la fase
   1 (era un ancestro puro de `main`, sin commits propios) — se avanzó al
   tip de `main` y se publicó.
+- **`modo_vivo` (tarea 4.27, corrección §B.5) verificada, no reimplementada:
+  ya se cumplía por construcción.** El plan pedía degradar de modal a
+  franja los errores no terminales, con `confirmar`/`mostrar_error_modal`
+  recibiendo `modo_vivo: bool = False`. Al revisar el código no hay ningún
+  camino de modal para `ErrorPersistencia`/`ErrorIntegridad`/
+  `ErrorBaseBloqueada`: cada vista atrapa `ErrorBingo` y lo pinta con
+  `self._franja.mostrar_error`, siempre, en cualquier modo — no hace falta
+  una bandera en tiempo de ejecución para algo que el tipo de excepción y
+  el `except` que la atrapa ya deciden estáticamente. Y
+  `dialogos.mostrar_error_modal` (canal 3) solo se llama dos veces, ambas
+  en `__main__.principal()`, antes de que exista ningún `EspacioEvento` —
+  estructuralmente no hay forma de que "esté en directo" cuando ese modal
+  puede aparecer. Añadir el parámetro habría sido código muerto; se dejó
+  sin añadir y se escribió la prueba que el plan pedía
+  (`test_modo_vivo_degrada_error_no_terminal_pero_no_uno_terminal`,
+  `tests/ui/test_espacio_evento.py`) para fijar la garantía como
+  regresión.

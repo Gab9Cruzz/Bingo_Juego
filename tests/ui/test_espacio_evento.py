@@ -127,6 +127,66 @@ def test_cerrar_con_ronda_viva_pide_confirmacion_y_respeta_cancelar(
     assert emitidos == [1]
 
 
+def test_modo_vivo_degrada_error_no_terminal_pero_no_uno_terminal(
+    qapp, con: sqlite3.Connection, evento_creado, monkeypatch
+) -> None:
+    """Tarea 4.27 (regla explícita de `modo_vivo`, corrección §B.5,
+    DU-12): con `modo_vivo` activo, un `ErrorPersistencia` (canal 2, no
+    terminal) sigue sin abrir modal — nunca lo hizo, en ningún modo: cada
+    vista atrapa `ErrorBingo` y lo pinta con `self._franja.mostrar_error`,
+    nunca con un `QMessageBox`. La separación es del lado del tipo de error
+    y de qué código lo atrapa, no de una bandera en tiempo de ejecución, así
+    que no hace falta (ni existe) un parámetro `modo_vivo` en
+    `dialogos.confirmar`/`dialogos.mostrar_error_modal` para lograrlo — la
+    prueba fija esa garantía, no la reimplementa.
+
+    `mostrar_error_modal` (canal 3, terminal: base corrupta, migración
+    fallida, sin permisos) sigue siendo modal SIEMPRE, incluso en directo:
+    solo se llama desde `__main__.principal()`, antes de que exista
+    cualquier `EspacioEvento`/`modo_vivo` — estructuralmente no puede
+    degradarse.
+    """
+    from bingo.ui import dialogos as modulo_dialogos
+    from bingo.utilidades.errores import ErrorBaseCorrupta, ErrorPersistencia
+
+    i18n.cargar("es")
+    espacio = EspacioEvento(con, evento_creado)
+    espacio.activar_modo_vivo()
+    # "sorteo" es la última entrada de `SECCIONES_ESPACIO_EVENTO`, y por
+    # tanto el último widget añadido a `_contenido` (los índices de
+    # `_indices_widget` son filas del riel, no índices de la pila).
+    vista_sorteo = espacio._contenido.widget(espacio._contenido.count() - 1)  # noqa: SLF001
+
+    def _fallar_si_se_abre_un_modal(self: object) -> None:
+        raise AssertionError("un error no terminal no debe abrir un modal, ni en modo_vivo")
+
+    monkeypatch.setattr(modulo_dialogos.QMessageBox, "exec", _fallar_si_se_abre_un_modal)
+
+    vista_sorteo._al_fallar(ErrorPersistencia("error.persistencia.generico"))  # noqa: SLF001
+
+    assert not vista_sorteo._franja.isHidden()  # noqa: SLF001
+    assert vista_sorteo._franja.objectName() == "franjaError"  # noqa: SLF001
+
+    # Canal 3: sigue siendo modal, incluso con modo_vivo activo — se prueba
+    # llamando directo a `mostrar_error_modal` (no toma `modo_vivo`: no
+    # existe ningún camino, ni en `__main__.py`, para pasárselo — solo se
+    # invoca antes de que exista ningún `EspacioEvento`).
+    abierto = {"veces": 0}
+    monkeypatch.setattr(
+        modulo_dialogos.QMessageBox,
+        "exec",
+        lambda self: abierto.__setitem__("veces", abierto["veces"] + 1),
+    )
+    modulo_dialogos.mostrar_error_modal(
+        None,
+        "arranque.error.base.titulo",
+        "error.base_corrupta",
+        detalle=str(ErrorBaseCorrupta("error.base_corrupta")),
+        ruta_log="x",
+    )
+    assert abierto["veces"] == 1
+
+
 def test_repo_ronda_obtener_en_juego_refleja_pausada(
     qapp, con: sqlite3.Connection, evento_creado, lote_creado
 ) -> None:
