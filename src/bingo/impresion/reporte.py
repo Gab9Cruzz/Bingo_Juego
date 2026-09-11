@@ -358,3 +358,36 @@ def reporte_evento_pdf(
     lienzo.showPage()
     lienzo.save()
     return ruta_destino
+
+
+# ── Auditoría del evento (tarea 4.19, expansión E3) ──
+
+
+def reporte_auditoria_excel(
+    filas: Sequence[Mapping[str, object]],
+    ruta_destino: Path,
+    textos: Mapping[str, str],
+) -> Path:
+    """Una sola hoja (momento, acción, detalle) — sin resumen: el panel de
+    auditoría es una tabla, no un tablero. `_escribir_seguro` es igual de
+    necesario aquí que en cualquier otro reporte: `detalle` puede llevar
+    texto libre de otra fase (p. ej. un motivo de anulación) que empiece
+    por `=`."""
+    libro = Workbook()
+    hoja = libro.active
+    hoja.title = textos.get("hoja", "Auditoría")[:_LONGITUD_MAXIMA_NOMBRE_HOJA]
+    columnas = ("momento", "accion", "detalle")
+    for columna_indice, clave in enumerate(columnas, start=1):
+        texto = textos.get(f"columna_{clave}", clave)
+        hoja.cell(row=1, column=columna_indice, value=texto).font = Font(bold=True)
+    for fila_indice, datos in enumerate(filas, start=2):
+        for columna_indice, clave in enumerate(columnas, start=1):
+            _escribir_seguro(hoja, fila_indice, columna_indice, datos.get(clave))
+    hoja.freeze_panes = "A2"
+    hoja.column_dimensions["A"].width = 20
+    hoja.column_dimensions["B"].width = 28
+    hoja.column_dimensions["C"].width = 50
+
+    ruta_destino.parent.mkdir(parents=True, exist_ok=True)
+    libro.save(ruta_destino)
+    return ruta_destino

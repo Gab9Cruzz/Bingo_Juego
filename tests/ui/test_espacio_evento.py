@@ -152,10 +152,13 @@ def test_modo_vivo_degrada_error_no_terminal_pero_no_uno_terminal(
     i18n.cargar("es")
     espacio = EspacioEvento(con, evento_creado)
     espacio.activar_modo_vivo()
-    # "sorteo" es la última entrada de `SECCIONES_ESPACIO_EVENTO`, y por
-    # tanto el último widget añadido a `_contenido` (los índices de
-    # `_indices_widget` son filas del riel, no índices de la pila).
-    vista_sorteo = espacio._contenido.widget(espacio._contenido.count() - 1)  # noqa: SLF001
+    # El widget en `_contenido` se añade en el mismo orden que
+    # `SECCIONES_ESPACIO_EVENTO` (sin encabezados) — no el índice de fila del
+    # riel, que sí cuenta los encabezados de grupo.
+    indice_pila_sorteo = [e.clave_i18n for e in SECCIONES_ESPACIO_EVENTO].index(
+        "espacio_evento.seccion.sorteo"
+    )
+    vista_sorteo = espacio._contenido.widget(indice_pila_sorteo)  # noqa: SLF001
 
     def _fallar_si_se_abre_un_modal(self: object) -> None:
         raise AssertionError("un error no terminal no debe abrir un modal, ni en modo_vivo")

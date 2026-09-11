@@ -445,3 +445,16 @@ el plan completo:
   mismo motivo por el que 4.13 refresca `self._evento` tras finalizar:
   nada garantiza que la sección Compradores se reabra después de que
   Sorteo finalice el evento.
+- **Panel de auditoría del evento (tarea 4.19, expansión E3 — cierra deuda
+  de la fase 4).** `repo_auditoria.listar_por_evento` ya existía desde la
+  fase 4 sin ninguna pantalla que lo leyera; nueva sección "Auditoría" de
+  solo lectura en el riel, grupo "evento", la **última** — nunca hace
+  falta cruzarla con las flechas para llegar a otra sección, que es
+  justo la razón por la que Sorteo iba último antes de esta tarea
+  (comentario de `registro_vistas.py`). Filtro por prefijo de acción **en
+  memoria** (el volumen por evento no justifica SQL nuevo — el propio
+  plan lo señala), nuevo `servicio_auditoria.py` (no existía) que
+  centraliza ese filtro y delega la exportación a `.xlsx` en
+  `impresion/reporte.py::reporte_auditoria_excel` (único módulo que
+  escribe Excel, hallazgo A4 de la fase 4) — "exportar" trae exactamente
+  las filas que el panel está mostrando, nunca más.

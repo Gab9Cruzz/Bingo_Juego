@@ -96,6 +96,12 @@ def _vista_sorteo(con: Any, evento: Any, espacio: Any) -> QWidget:
     return VistaSorteo(con, evento, espacio)
 
 
+def _vista_auditoria(con: Any, evento: Any, _espacio: Any) -> QWidget:
+    from bingo.ui.vistas.vista_auditoria import VistaAuditoria
+
+    return VistaAuditoria(con, evento)
+
+
 REGISTRO_NAVEGACION_GLOBAL: list[EntradaNavegacionGlobal] = [
     EntradaNavegacionGlobal("nav.eventos", _vista_eventos),
     EntradaNavegacionGlobal("nav.organizaciones", _vista_organizaciones),
@@ -104,9 +110,10 @@ REGISTRO_NAVEGACION_GLOBAL: list[EntradaNavegacionGlobal] = [
 
 # Orden del riel (decisión D10/DU-16, plan de la fase 5): dos grupos.
 # "Preparación" no se toca durante el evento; "Evento" es la noche del
-# bingo. Sorteo es la última antes de Auditoría (tarea 4.19, todavía sin
-# implementar) a propósito: bajando con las flechas se llega a Sorteo sin
-# pasar por encima de una sección de solo lectura.
+# bingo. Sorteo va antes de Auditoría (tarea 4.19) a propósito: bajando con
+# las flechas se llega a Sorteo sin pasar por encima de una sección de solo
+# lectura — Auditoría queda la última justo porque nunca hace falta cruzarla
+# para llegar a nada más.
 SECCIONES_ESPACIO_EVENTO: list[EntradaSeccionEvento] = [
     EntradaSeccionEvento("espacio_evento.seccion.datos", _vista_datos_evento, grupo="preparacion"),
     EntradaSeccionEvento("espacio_evento.seccion.cartones", _vista_cartones, grupo="preparacion"),
@@ -115,4 +122,5 @@ SECCIONES_ESPACIO_EVENTO: list[EntradaSeccionEvento] = [
     EntradaSeccionEvento("espacio_evento.seccion.compradores", _vista_compradores, grupo="evento"),
     EntradaSeccionEvento("espacio_evento.seccion.rondas", _vista_rondas, grupo="evento"),
     EntradaSeccionEvento("espacio_evento.seccion.sorteo", _vista_sorteo, grupo="evento"),
+    EntradaSeccionEvento("espacio_evento.seccion.auditoria", _vista_auditoria, grupo="evento"),
 ]

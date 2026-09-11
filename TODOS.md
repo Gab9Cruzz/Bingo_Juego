@@ -248,11 +248,12 @@ contrato; todas son mejoras de robustez o de pulido que quedan pendientes.
   estado "sucio" y los dos botones.
   Esfuerzo: S / S · Depende de: nada.
 
-- **Panel de auditoría del evento (T9 del gate CEO).** `repo_auditoria.
-  listar_por_evento` ya existe desde antes de esta fase y la importación/venta
-  por rango/anulación ya registran ahí; falta la vista de solo lectura que lo
-  muestre en el espacio del evento.
-  Esfuerzo: S / S · Depende de: nada.
+- ~~**Panel de auditoría del evento (T9 del gate CEO).**~~ Resuelto en la
+  fase 5 (tarea 4.19): sección "Auditoría" de solo lectura en el riel
+  (grupo Evento, la última — nunca hace falta cruzarla para llegar a
+  ninguna otra), con filtro por prefijo de acción y exportación a
+  `.xlsx` (`servicio_auditoria`, `impresion/reporte.py::
+  reporte_auditoria_excel`).
 
 - **Recaudado real editable desde la interfaz.** El backend
   (`servicio_conciliacion.declarar_recaudado_real`,
