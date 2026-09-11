@@ -9,11 +9,19 @@ from pathlib import Path
 
 import openpyxl
 import pytest
-from factorias import crear_carton, crear_evento, crear_lote, crear_organizacion
+from factorias import (
+    crear_carton,
+    crear_evento,
+    crear_lote,
+    crear_organizacion,
+    crear_patron,
+    crear_ronda,
+)
 
 from bingo.dominio.modelos import Comprador
 from bingo.persistencia import repo_carton, repo_comprador
 from bingo.servicios import servicio_cartones, servicio_compradores
+from bingo.servicios.servicio_compradores import InformeImportacion
 from bingo.utilidades.errores import ErrorTransicionInvalida, ErrorValidacion
 
 _TEXTOS_PLANTILLA = {
@@ -438,6 +446,82 @@ def test_cambiar_estado_carton_generico_no_permite_vendido(con: sqlite3.Connecti
     evento, cartones = _evento_con_cartones_impresos(con, cantidad=1)
     with pytest.raises(ErrorTransicionInvalida):
         servicio_cartones.cambiar_estado_carton(con, cartones[0].id, "vendido")
+
+
+# ── Bloqueo de venta con ronda en curso (tarea 4.23, hallazgo C4/C5) ──
+
+
+def _evento_con_ronda(con: sqlite3.Connection, *, estado: str):
+    evento, cartones = _evento_con_cartones_impresos(con, cantidad=2)
+    patron = crear_patron(con)
+    ronda = crear_ronda(con, evento.id, patron.id, estado=estado)
+    return evento, cartones, ronda
+
+
+def test_registrar_manual_bloqueado_con_ronda_en_curso(con: sqlite3.Connection) -> None:
+    evento, cartones, _ronda = _evento_con_ronda(con, estado="en_curso")
+    with pytest.raises(ErrorValidacion):
+        servicio_compradores.registrar_manual(
+            con, evento.id, cartones[0].codigo, Comprador(carton_id=0, nombre="Juan")
+        )
+
+
+def test_registrar_manual_permitido_con_ronda_pausada(con: sqlite3.Connection) -> None:
+    """Hallazgo C4: bloquear también con `pausada` crearía un escenario peor
+    — quien compra en la puerta mientras el sorteo está pausado no podría
+    registrarse hasta que la ronda cierre."""
+    evento, cartones, _ronda = _evento_con_ronda(con, estado="pausada")
+    creado = servicio_compradores.registrar_manual(
+        con, evento.id, cartones[0].codigo, Comprador(carton_id=0, nombre="Juan")
+    )
+    assert creado.id is not None
+
+
+def test_registrar_manual_permitido_con_ronda_cerrada(con: sqlite3.Connection) -> None:
+    evento, cartones, _ronda = _evento_con_ronda(con, estado="cerrada")
+    creado = servicio_compradores.registrar_manual(
+        con, evento.id, cartones[0].codigo, Comprador(carton_id=0, nombre="Juan")
+    )
+    assert creado.id is not None
+
+
+def test_anular_venta_bloqueada_con_ronda_en_curso(con: sqlite3.Connection) -> None:
+    evento, cartones, ronda = _evento_con_ronda(con, estado="pendiente")
+    creado = servicio_compradores.registrar_manual(
+        con, evento.id, cartones[0].codigo, Comprador(carton_id=0, nombre="Juan")
+    )
+    from bingo.persistencia import repo_ronda
+
+    repo_ronda.actualizar_estado(con, ronda.id, "en_curso")
+
+    with pytest.raises(ErrorValidacion):
+        servicio_compradores.anular_venta(con, creado.id)
+
+
+def test_marcar_vendidos_por_rango_bloqueado_con_ronda_en_curso(con: sqlite3.Connection) -> None:
+    evento, cartones, _ronda = _evento_con_ronda(con, estado="en_curso")
+    with pytest.raises(ErrorValidacion):
+        servicio_compradores.marcar_vendidos_por_rango(
+            con, evento.id, cartones[0].codigo, cartones[1].codigo, nombre_generico="Venta"
+        )
+
+
+def test_aplicar_importacion_bloqueada_con_ronda_en_curso(con: sqlite3.Connection) -> None:
+    evento, _cartones, _ronda = _evento_con_ronda(con, estado="en_curso")
+    with pytest.raises(ErrorValidacion):
+        servicio_compradores.aplicar_importacion(con, evento.id, InformeImportacion())
+
+
+def test_cambiar_estado_carton_bloqueado_con_ronda_en_curso(con: sqlite3.Connection) -> None:
+    evento, cartones, _ronda = _evento_con_ronda(con, estado="en_curso")
+    with pytest.raises(ErrorValidacion):
+        servicio_cartones.cambiar_estado_carton(con, cartones[0].id, "anulado")
+
+
+def test_cambiar_estado_carton_permitido_con_ronda_cerrada(con: sqlite3.Connection) -> None:
+    evento, cartones, _ronda = _evento_con_ronda(con, estado="cerrada")
+    servicio_cartones.cambiar_estado_carton(con, cartones[0].id, "anulado")
+    assert repo_carton.obtener(con, cartones[0].id).estado == "anulado"
 
 
 @pytest.mark.lento

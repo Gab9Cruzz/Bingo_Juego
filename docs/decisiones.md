@@ -329,3 +329,24 @@ el plan completo:
   sin efecto sobre `:memory:` u otra base sin archivo real en
   `PRAGMA database_list` — ahí no hay nada que copiar, y eso no es un
   error.
+- **Bloqueo de venta con ronda en curso, cinco funciones no tres (tarea
+  4.23, corrección S5-4, hallazgo C5).** `servicio_compradores.
+  registrar_manual/aplicar_importacion/marcar_vendidos_por_rango/
+  anular_venta` y `servicio_cartones.cambiar_estado_carton` rechazan con
+  `ErrorValidacion` si el evento tiene una ronda `en_curso`. Sin esto, un
+  cartón vendido o anulado a mitad de ronda queda desincronizado del
+  índice inverso en memoria del motor (`EstadoPartida`, construido una
+  sola vez al iniciar la ronda): pagó y no puede ganar, **en silencio** —
+  el peor fallo posible del producto.
+- **El bloqueo es solo con `en_curso`, nunca con `pausada` (hallazgo C4).**
+  Bloquear también con `pausada` crea un escenario peor que el que arregla:
+  se vende en la puerta, no da tiempo a registrar, se inicia la ronda, y ya
+  no se puede registrar a nadie hasta cerrarla. Con la ronda `pausada` sí
+  se registra, y al reanudar el motor reconstruye el índice inverso sobre
+  los cartones vendidos en ese momento (D13 ya hace exactamente eso). El
+  helper `servicio_rondas.hay_ronda_en_curso` centraliza el criterio para
+  las cinco llamadas.
+- **`iniciar_ronda` con cero cartones elegibles siempre lanza
+  `ErrorValidacion` (hallazgo C4).** `validar_evento_listo` marca "sin
+  vendidos" como aviso no bloqueante a propósito (se vende en la puerta),
+  pero arrancar un sorteo donde nadie puede ganar no es un caso de uso.

@@ -46,6 +46,7 @@ from bingo.dominio.modelos import Carton, Comprador
 from bingo.impresion import reporte
 from bingo.persistencia import repo_auditoria, repo_carton, repo_comprador
 from bingo.persistencia.conexion import transaccion
+from bingo.servicios import servicio_rondas
 from bingo.utilidades.errores import (
     ErrorBingo,
     ErrorNoEncontrado,
@@ -471,6 +472,7 @@ def aplicar_importacion(
     al_progresar: Callable[[int, int], None] | None = None,
     debe_cancelar: Callable[[], bool] | None = None,  # noqa: ARG001 - R15: la escritura no es cancelable
 ) -> ResultadoImportacion:
+    _exigir_sin_ronda_en_curso(con, evento_id)
     total = len(informe.correctas) + len(informe.completa_provisional)
     aplicadas = 0
     completadas = 0
@@ -558,9 +560,22 @@ def aplicar_importacion(
 # ── Alta manual, edición, anulación, venta por rango (contrato §4.1, §4.3) ──
 
 
+def _exigir_sin_ronda_en_curso(con: sqlite3.Connection, evento_id: int) -> None:
+    """Bloqueo de venta con ronda en curso (tarea 4.23, corrección S5-4,
+    hallazgo C4/C5): vender, completar o anular una venta a mitad de ronda
+    dejaría el índice inverso en memoria (`EstadoPartida`, construido al
+    iniciar la ronda) desincronizado de lo que dice la base — un cartón
+    vendido después no podría ganar, en silencio, que es el peor fallo
+    posible de este producto. Con la ronda solo `pausada` sí se permite: al
+    reanudar, el motor reconstruye ese índice desde cero (D13)."""
+    if servicio_rondas.hay_ronda_en_curso(con, evento_id):
+        raise ErrorValidacion("compradores.error.ronda_en_curso")
+
+
 def registrar_manual(
     con: sqlite3.Connection, evento_id: int, codigo: str, comprador: Comprador
 ) -> Comprador:
+    _exigir_sin_ronda_en_curso(con, evento_id)
     if not comprador.nombre.strip():
         raise ErrorValidacion("compradores.error.nombre_vacio", campo="nombre")
     carton = repo_carton.obtener_por_codigo(con, evento_id, codigo.strip())
@@ -625,6 +640,7 @@ def anular_venta(con: sqlite3.Connection, comprador_id: int, motivo: str | None 
     carton = repo_carton.obtener(con, comprador.carton_id)
     if carton is None:
         raise ErrorNoEncontrado("error.no_encontrado", parametros={"id": comprador.carton_id})
+    _exigir_sin_ronda_en_curso(con, carton.evento_id)
 
     estado_previo = comprador.estado_carton_previo or "entregado"
     if not puede_transicionar(TRANSICIONES_CARTON, carton.estado, estado_previo):
@@ -696,6 +712,7 @@ def marcar_vendidos_por_rango(
     datos de contacto, con `nombre_generico` ya traducido por la vista (este
     servicio no importa i18n).
     """
+    _exigir_sin_ronda_en_curso(con, evento_id)
     elegibles, resultado = _filtrar_rango(con, evento_id, desde, hasta)
 
     marcados = 0

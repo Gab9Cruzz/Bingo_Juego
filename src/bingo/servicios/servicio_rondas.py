@@ -162,6 +162,17 @@ def validar_evento_listo(con: sqlite3.Connection, evento_id: int) -> list[Pendie
     return pendientes
 
 
+def hay_ronda_en_curso(con: sqlite3.Connection, evento_id: int) -> bool:
+    """Bloqueo de venta con ronda en curso (tarea 4.23, corrección S5-4,
+    hallazgo C4): a propósito solo `en_curso`, **no** `pausada`. Bloquear
+    también con `pausada` crea un escenario peor que el que se arregla — se
+    vende en la puerta, no da tiempo a registrar, se inicia la ronda, y ya
+    no se puede registrar a nadie hasta cerrarla. Con la ronda `pausada` sí
+    se registra, y al reanudar el motor reconstruye el índice inverso sobre
+    los cartones vendidos en ese momento (D13)."""
+    return bool(repo_ronda.listar_por_estado(con, evento_id, "en_curso"))
+
+
 def reabrir_ronda(con: sqlite3.Connection, ronda_id: int) -> None:
     """`cerrada -> en_curso` (hallazgo V5, plan de la fase 5): cerrar una
     ronda por error en directo tiene que tener deshacer, y el alcance §6.6

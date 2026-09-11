@@ -39,6 +39,7 @@ from bingo.dominio.estados import TRANSICIONES_CARTON, puede_transicionar
 from bingo.dominio.modelos import Carton, Lote
 from bingo.persistencia import repo_auditoria, repo_carton, repo_lote
 from bingo.persistencia.conexion import transaccion
+from bingo.servicios import servicio_rondas
 from bingo.utilidades.errores import (
     ErrorDominio,
     ErrorNoEncontrado,
@@ -269,6 +270,12 @@ def cambiar_estado_carton(con: sqlite3.Connection, carton_id: int, nuevo_estado:
     actual = repo_carton.obtener(con, carton_id)
     if actual is None:
         raise ErrorNoEncontrado("error.no_encontrado", parametros={"id": carton_id})
+    if servicio_rondas.hay_ronda_en_curso(con, actual.evento_id):
+        # Tarea 4.23 (corrección S5-4, hallazgo C5): cambiar el estado de un
+        # cartón a mitad de ronda (p. ej. sacarlo de "vendido") lo dejaría
+        # fuera de la base pero dentro del índice inverso en memoria del
+        # motor de sorteo — podría "ganar" un cartón que ya no cuenta.
+        raise ErrorValidacion("cartones.error.ronda_en_curso", parametros={"id": carton_id})
 
     if not puede_transicionar(TRANSICIONES_CARTON, actual.estado, nuevo_estado):
         raise ErrorTransicionInvalida(
