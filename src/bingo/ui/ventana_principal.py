@@ -8,6 +8,9 @@ en su lugar hay `ultimo_evento_abierto_id`.
 
 from __future__ import annotations
 
+import weakref
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QByteArray, Qt
@@ -16,6 +19,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QListWidget,
     QMainWindow,
+    QMessageBox,
     QStackedWidget,
     QWidget,
 )
@@ -56,6 +60,7 @@ class VentanaPrincipal(QMainWindow):
         self._vista_organizaciones.crear_primer_evento_solicitado.connect(
             self._ir_a_eventos_y_crear
         )
+        self._vista_ajustes = self._vistas_globales[2]
 
         pagina_nivel_global = QWidget()
         distribucion_global = QHBoxLayout(pagina_nivel_global)
@@ -90,6 +95,45 @@ class VentanaPrincipal(QMainWindow):
                 self._pila_principal.setCurrentIndex(0)
                 self._nav_global.setCurrentRow(indice)
                 return
+
+    def establecer_gancho_restaurar(self, callback: Callable[[Path], None]) -> None:
+        """Tarea 4.12: `__main__.principal()` es quien tiene la conexión, el
+        `QLockFile` y el `QApplication` reales — el gancho que de verdad
+        cierra todo eso y relanza el proceso vive ahí, no aquí. Esta ventana
+        solo añade la única regla que sí le corresponde a la cáscara: no
+        restaurar con un espacio de trabajo de evento abierto encima (hay
+        widgets, un `MotorSorteo`, quizá una `VentanaTransmision` viva, que
+        una base reemplazada por debajo dejaría apuntando a datos que ya no
+        existen).
+
+        `weakref` a propósito (no `self._al_pedir_restaurar` a secas): un
+        método ligado captura `self` con fuerza, y guardarlo en
+        `VistaAjustes` (un hijo de esta ventana) cerraría un ciclo
+        ventana -> hijo -> callback -> ventana. Sin `weakref`, esta ventana
+        solo se libera cuando el recolector cíclico decide correr — nunca de
+        inmediato al soltar la última referencia — y con ella se lleva el
+        `QLockFile` capturado por `callback` sin soltar. Detectado por
+        `test_arranque_limpia_lote_huerfano_de_una_sesion_anterior`, que
+        abre dos veces seguidas en el mismo proceso y se quedaba esperando
+        un `QLockFile` que la primera pasada nunca soltó."""
+        referencia_debil = weakref.ref(self)
+
+        def _gancho(ruta_zip: Path) -> None:
+            ventana = referencia_debil()
+            if ventana is not None:
+                ventana._al_pedir_restaurar(ruta_zip, callback)  # noqa: SLF001 - misma clase
+
+        self._vista_ajustes.establecer_gancho_restaurar(_gancho)
+
+    def _al_pedir_restaurar(self, ruta_zip: Path, callback: Callable[[Path], None]) -> None:
+        if self._espacio_evento is not None:
+            QMessageBox.warning(
+                self,
+                t("ajustes.restaurar.evento_abierto.titulo"),
+                t("ajustes.restaurar.evento_abierto.mensaje"),
+            )
+            return
+        callback(ruta_zip)
 
     def _ir_a_eventos_y_crear(self) -> None:
         self._navegar_a("nav.eventos")

@@ -367,3 +367,29 @@ el plan completo:
   de 4.23 que a propósito solo mira en_curso).** Recordatorio (franja no
   modal con acción, nunca modal ni siquiera fuera de `modo_vivo`): al
   iniciar la PRIMERA ronda del evento, y al finalizar el evento.
+- **"Restaurar desde respaldo…" (Ajustes, tarea 4.12, hallazgo B4) no
+  restaura desde ahí: cierra la conexión, suelta el `QLockFile` y los
+  manejadores de log, y relanza el proceso con `--restaurar <zip>`.**
+  `VistaAjustes` solo pide el `.zip` y confirma; el gancho que de verdad
+  hace ese cierre-y-relanzamiento lo arma `__main__.principal()` (es quien
+  tiene la conexión, el `QLockFile` y el `QApplication` reales) y se lo
+  entrega a `VentanaPrincipal.establecer_gancho_restaurar()`, que añade la
+  única regla que le corresponde a la cáscara: bloquear con un espacio de
+  evento abierto encima.
+- **Bug real encontrado al escribir esto: capturar `self` (la ventana) en
+  el gancho reventaba `test_arranque_limpia_lote_huerfano_de_una_sesion_anterior`
+  con un `QLockFile` que nunca se soltaba.** Guardar el gancho en
+  `VistaAjustes` (una hija de la ventana) que a su vez captura la ventana
+  cierra un ciclo ventana → hijo → gancho → ventana; `establecer_gancho_restaurar`
+  usa `weakref.ref(self)` para no añadirlo. Pero la ventana YA tenía un
+  ciclo propio y anterior a esta tarea (`i18n.registrar_para_retraduccion`
+  conecta `destroyed` a un método ligado de sí misma) que vive del lado de
+  Qt, no del de Python — ni `weakref` ahí ni `gc.collect()` a mano lo
+  rompen, porque el `QLockFile` capturado por el gancho quedaba vivo
+  mientras la ventana lo estuviera, y la ventana nunca se recolectaba sola.
+  La corrección real no depende de que la ventana se recolecte nunca:
+  `principal()` llama `lockfile.unlock()` explícitamente justo después de
+  que `app.exec()` retorna — el mismo punto donde, antes de esta tarea, la
+  variable local simplemente salía de ámbito y el archivo se soltaba solo.
+  `unlock()` no hace nada si ya estaba suelto, así que llamarlo de más (tras
+  un "Restaurar" que ya lo soltó él mismo) es inocuo.

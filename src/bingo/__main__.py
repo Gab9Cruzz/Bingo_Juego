@@ -20,6 +20,8 @@ camino.
 
 from __future__ import annotations
 
+import contextlib
+import sqlite3
 import sys
 
 from PySide6.QtCore import QLockFile, Qt
@@ -239,9 +241,49 @@ def principal(argv: list[str] | None = None) -> int:
     if aviso_ubicacion and aviso_ubicacion not in prefs.avisos_descartados:
         QMessageBox.warning(ventana, t("ajustes.titulo"), t(aviso_ubicacion))
 
+    def _comando_relanzamiento() -> list[str]:
+        # PyInstaller (tarea 4.14) fija `sys.frozen`; en desarrollo se
+        # relanza el mismo intérprete con `-m bingo` — nunca `sys.argv[0]`
+        # a secas, que perdería el paquete de entrada.
+        if getattr(sys, "frozen", False):
+            return [sys.executable]
+        return [sys.executable, "-m", "bingo"]
+
+    def _reiniciar_para_restaurar(ruta_zip) -> None:  # noqa: ANN001 - Path, import perezoso abajo
+        # Botón "Restaurar" de Ajustes (tarea 4.12, hallazgo B4): "sin
+        # evento abierto" no basta — el proceso sigue teniendo `bingo.db`
+        # abierto, `.bingo.lock` tomado y `aplicacion.log` abierto por el
+        # `RotatingFileHandler`. Los tres se sueltan aquí, EN ESTE ORDEN,
+        # antes de relanzar con `--restaurar` — al revés es el `WinError 32`
+        # a mitad de camino que esta tarea existe para evitar.
+        import subprocess
+
+        from bingo.utilidades.log import reiniciar_para_pruebas as _cerrar_manejadores_log
+
+        con.close()
+        lockfile.unlock()
+        _cerrar_manejadores_log()
+        subprocess.Popen(_comando_relanzamiento() + ["--restaurar", str(ruta_zip)])
+        app.quit()
+
+    ventana.establecer_gancho_restaurar(_reiniciar_para_restaurar)
+
     ventana.show()
     codigo = app.exec()
-    con.close()
+
+    # El `QLockFile` se suelta aquí explícitamente, no al salir de ámbito
+    # (tarea 4.12): `lockfile` ahora también vive capturado por el gancho de
+    # "Restaurar" que cuelga de `VistaAjustes` (un hijo de `ventana`), y
+    # `ventana` conecta `destroyed` a un método propio vía
+    # `i18n.registrar_para_retraduccion` — un ciclo que solo Qt (no el
+    # recolector cíclico de Python) puede romper, así que ya no basta con
+    # que esta función retorne para soltar el archivo. `unlock()` no hace
+    # nada si ya estaba suelto (p. ej. `_reiniciar_para_restaurar` ya lo
+    # soltó antes de relanzar), así que llamarlo de más aquí es inocuo.
+    lockfile.unlock()
+
+    with contextlib.suppress(sqlite3.ProgrammingError):
+        con.close()  # ya se cerró en _reiniciar_para_restaurar (tarea 4.12)
     return codigo
 
 

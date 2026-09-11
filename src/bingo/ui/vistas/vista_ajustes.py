@@ -1,14 +1,18 @@
-"""Vista de ajustes: tres bloques (enmienda E19), no diez filas indiferenciadas."""
+"""Vista de ajustes: cuatro bloques (enmienda E19, más Respaldos en la tarea
+4.12), no diez filas indiferenciadas."""
 
 from __future__ import annotations
 
 import platform
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QTimer, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QComboBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -31,6 +35,7 @@ from bingo.config.rutas import (
 )
 from bingo.i18n import t
 from bingo.persistencia.migraciones import version_actual
+from bingo.ui.dialogos import confirmar
 
 
 def _fila_ubicacion(ruta) -> tuple[QLabel, QPushButton]:
@@ -45,6 +50,7 @@ class VistaAjustes(QWidget):
     def __init__(self, con: Any, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._con = con
+        self._gancho_restaurar: Callable[[Path], None] | None = None
 
         self._titulo = QLabel()
 
@@ -122,15 +128,49 @@ class VistaAjustes(QWidget):
         formulario_diagnostico.addRow(self._boton_abrir_log)
         self._grupo_diagnostico.setLayout(formulario_diagnostico)
 
+        # --- Respaldos (tarea 4.12) ---
+        # "Restaurar" no restaura desde aquí (hallazgo B4): cierra la
+        # conexión, suelta el `QLockFile` y los manejadores de log, y
+        # relanza el proceso con `--restaurar <zip>` — el único camino que
+        # no deja `bingo.db` abierto a mitad de la operación. El gancho lo
+        # entrega `__main__.principal()` vía `VentanaPrincipal` (es quien
+        # tiene la conexión, el `QLockFile` y el `QApplication` reales);
+        # sin gancho el botón no hace nada (defensivo para pruebas que
+        # instancian esta vista sola).
+        self._grupo_respaldos = QGroupBox()
+        formulario_respaldos = QFormLayout()
+        self._boton_restaurar = QPushButton()
+        self._boton_restaurar.clicked.connect(self._restaurar_desde_respaldo)
+        formulario_respaldos.addRow(self._boton_restaurar)
+        self._grupo_respaldos.setLayout(formulario_respaldos)
+
         distribucion = QVBoxLayout(self)
         distribucion.addWidget(self._titulo)
         distribucion.addWidget(self._grupo_preferencias)
         distribucion.addWidget(self._grupo_ubicaciones)
         distribucion.addWidget(self._grupo_diagnostico)
+        distribucion.addWidget(self._grupo_respaldos)
         distribucion.addStretch()
 
         self.retraducir()
         i18n.registrar_para_retraduccion(self)
+
+    def establecer_gancho_restaurar(self, callback: Callable[[Path], None] | None) -> None:
+        self._gancho_restaurar = callback
+
+    def _restaurar_desde_respaldo(self) -> None:
+        if self._gancho_restaurar is None:
+            return
+        ruta, _filtro = QFileDialog.getOpenFileName(self, "", str(dir_respaldos()), "Zip (*.zip)")
+        if not ruta:
+            return
+        if not confirmar(
+            self,
+            t("ajustes.restaurar.confirmar.titulo"),
+            t("ajustes.restaurar.confirmar.mensaje"),
+        ):
+            return
+        self._gancho_restaurar(Path(ruta))
 
     def _leer_version_esquema(self) -> str:
         try:
@@ -166,3 +206,5 @@ class VistaAjustes(QWidget):
         self._etiqueta_version_python.setText(t("ajustes.version_python"))
         self._etiqueta_version_esquema.setText(t("ajustes.version_esquema"))
         self._boton_abrir_log.setText(t("ajustes.abrir_log"))
+        self._grupo_respaldos.setTitle(t("ajustes.seccion.respaldos"))
+        self._boton_restaurar.setText(t("ajustes.restaurar.boton"))
