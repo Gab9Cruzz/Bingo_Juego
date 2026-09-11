@@ -76,6 +76,85 @@ def test_destildar_fondo_transparente_vuelve_al_color_elegido(qapp, con, bingo_h
     assert vista._tema.colores.fondo == "#123456"
 
 
+# ── DRY con dominio.tema.BLOQUES y campos nuevos (tarea 4.21) ───────────────
+
+
+def test_editar_un_bloque_no_borra_los_campos_de_directo_del_juego(qapp, con, bingo_home) -> None:
+    """Hallazgo encontrado al escribir la tarea 4.21: antes de basar
+    `_leer_formulario()` en `dataclasses.replace(self._tema.juego, ...)`,
+    cualquier autoguardado de esta vista reescribía `ConfigJuego` entero,
+    revirtiendo en silencio los campos "de directo" (decisión DU-7) que la
+    sección Sorteo persiste sueltos con `repo_evento.actualizar_juego`."""
+    import dataclasses
+
+    con, evento = _preparar(con)
+    tema = TemaDashboard.por_defecto()
+    tema = dataclasses.replace(
+        tema, juego=dataclasses.replace(tema.juego, modo="automatico", intervalo_seg=10)
+    )
+    repo_evento.actualizar_tema(con, evento.id, tema.a_json())
+    evento = repo_evento.obtener(con, evento.id)
+
+    vista = VistaTema(con, evento)
+    vista._campos_bloque["bombo"]["visible"].setChecked(False)  # noqa: SLF001
+    vista._marcar_cambio()  # noqa: SLF001
+    vista._guardar()  # noqa: SLF001
+
+    guardado = TemaDashboard.desde_json(repo_evento.obtener(con, evento.id).tema_json)
+    assert guardado.juego.modo == "automatico"
+    assert guardado.juego.intervalo_seg == 10
+    assert guardado.bombo.visible is False
+
+
+def test_bloques_nuevos_de_la_fase_5_son_editables(qapp, con, bingo_home) -> None:
+    """`dominio.tema.BLOQUES` (única fuente, tarea 4.21) trae cuatro bloques
+    que el editor no exponía: numero_actual, patron_activo, imagen_premio,
+    logo."""
+    con, evento = _preparar(con)
+    vista = VistaTema(con, evento)
+
+    for clave in ("numero_actual", "patron_activo", "imagen_premio", "logo"):
+        assert clave in vista._campos_bloque  # noqa: SLF001
+
+    vista._campos_bloque["logo"]["visible"].setChecked(False)  # noqa: SLF001
+    vista._marcar_cambio()  # noqa: SLF001
+    vista._guardar()  # noqa: SLF001
+
+    guardado = TemaDashboard.desde_json(repo_evento.obtener(con, evento.id).tema_json)
+    assert guardado.logo.visible is False
+
+
+def test_campos_de_preparacion_del_juego_persisten(qapp, con, bingo_home) -> None:
+    con, evento = _preparar(con)
+    vista = VistaTema(con, evento)
+
+    vista._check_pausa_al_ganador.setChecked(False)  # noqa: SLF001
+    vista._spin_segundos_reclamo.setValue(45)  # noqa: SLF001
+    vista._campo_canal_reclamo.setText("WhatsApp 099-000-0000")  # noqa: SLF001
+    indice_cerrar = vista._combo_sin_reclamo.findData("cerrar")  # noqa: SLF001
+    vista._combo_sin_reclamo.setCurrentIndex(indice_cerrar)  # noqa: SLF001
+    vista._marcar_cambio()  # noqa: SLF001
+    vista._guardar()  # noqa: SLF001
+
+    guardado = TemaDashboard.desde_json(repo_evento.obtener(con, evento.id).tema_json)
+    assert guardado.juego.pausa_al_ganador is False
+    assert guardado.juego.segundos_reclamo == 45
+    assert guardado.juego.canal_reclamo == "WhatsApp 099-000-0000"
+    assert guardado.juego.sin_reclamo == "cerrar"
+
+
+def test_color_numero_actual_persiste(qapp, con, bingo_home) -> None:
+    con, evento = _preparar(con)
+    vista = VistaTema(con, evento)
+
+    vista._color_numero_actual.establecer_color("#00aaff")  # noqa: SLF001
+    vista._marcar_cambio()  # noqa: SLF001
+    vista._guardar()  # noqa: SLF001
+
+    guardado = TemaDashboard.desde_json(repo_evento.obtener(con, evento.id).tema_json)
+    assert guardado.colores.numero_actual == "#00aaff"
+
+
 def test_cargar_tema_transparente_muestra_la_casilla_tildada(qapp, con, bingo_home) -> None:
     from bingo.dominio.tema import FONDO_TRANSPARENTE, ConfigColores
 

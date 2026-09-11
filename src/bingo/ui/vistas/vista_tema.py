@@ -17,12 +17,14 @@ actualiza el tema en memoria y reinicia un temporizador de un solo disparo
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Any
 
 from PySide6.QtCore import QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
@@ -43,7 +45,7 @@ from bingo import i18n
 from bingo.config.ajustes import LADO_MAX_LOGO, RETARDO_VISTA_PREVIA_MS
 from bingo.config.rutas import dir_medios_evento
 from bingo.dominio.modelos import Evento
-from bingo.dominio.tema import ConfigBloque, TemaDashboard, validar
+from bingo.dominio.tema import BLOQUES, ConfigBloque, TemaDashboard, validar
 from bingo.i18n import t
 from bingo.persistencia import repo_evento
 from bingo.ui.dialogos import FranjaError
@@ -54,13 +56,6 @@ from bingo.utilidades.imagenes import validar_y_normalizar
 _ANCHO_REFERENCIA = 1920
 _ALTO_REFERENCIA = 1080
 _FILTRO_IMAGENES = "Imágenes (*.png *.jpg *.jpeg *.bmp)"
-
-_BLOQUES = (
-    ("bombo", "tema.bloque.bombo", 0.28, 0.5),
-    ("tablero_75", "tema.bloque.tablero_75", 0.5, 0.35),
-    ("contador_bolas", "tema.bloque.contador_bolas", 0.12, 0.15),
-    ("reloj", "tema.bloque.reloj", 0.12, 0.08),
-)
 
 
 class _LienzoPrevia(QWidget):
@@ -106,7 +101,7 @@ class _LienzoPrevia(QWidget):
             pintor.setPen(QPen(QColor("#33334a")))
             pintor.drawRect(QRectF(origen_x, origen_y, ancho_lienzo, alto_lienzo))
 
-            for clave, clave_i18n, ancho_frac, alto_frac in _BLOQUES:
+            for clave, clave_i18n, _pos_x, _pos_y, ancho_frac, alto_frac in BLOQUES:
                 bloque: ConfigBloque = getattr(self._tema, clave)
                 if not bloque.visible:
                     continue
@@ -215,10 +210,13 @@ class VistaTema(QWidget):
         self._color_acento.clicked.connect(self._marcar_cambio)
         self._color_tablero_marcado = BotonColor("#5b8def")
         self._color_tablero_marcado.clicked.connect(self._marcar_cambio)
+        self._color_numero_actual = BotonColor("#ffd60a")
+        self._color_numero_actual.clicked.connect(self._marcar_cambio)
         self._etiqueta_color_fondo = QLabel()
         self._etiqueta_color_texto = QLabel()
         self._etiqueta_color_acento = QLabel()
         self._etiqueta_color_tablero_marcado = QLabel()
+        self._etiqueta_color_numero_actual = QLabel()
         formulario_colores.addRow(self._etiqueta_color_fondo, self._fila_color(self._color_fondo))
         formulario_colores.addRow(self._casilla_fondo_transparente)
         formulario_colores.addRow(self._etiqueta_color_croma, self._fila_color(self._color_croma))
@@ -226,6 +224,9 @@ class VistaTema(QWidget):
         formulario_colores.addRow(self._etiqueta_color_acento, self._fila_color(self._color_acento))
         formulario_colores.addRow(
             self._etiqueta_color_tablero_marcado, self._fila_color(self._color_tablero_marcado)
+        )
+        formulario_colores.addRow(
+            self._etiqueta_color_numero_actual, self._fila_color(self._color_numero_actual)
         )
         self._boton_imagen_fondo = QPushButton()
         self._boton_imagen_fondo.clicked.connect(self._cargar_imagen_fondo)
@@ -240,7 +241,7 @@ class VistaTema(QWidget):
         self._grupo_bloques = QGroupBox()
         distribucion_bloques = QVBoxLayout()
         self._campos_bloque: dict[str, dict[str, QWidget]] = {}
-        for clave, clave_i18n, _aw, _ah in _BLOQUES:
+        for clave, clave_i18n, _px, _py, _aw, _ah in BLOQUES:
             self._campos_bloque[clave] = self._agregar_bloque(distribucion_bloques, clave_i18n)
         self._campos_banner = self._agregar_banner(distribucion_bloques)
         self._grupo_bloques.setLayout(distribucion_bloques)
@@ -255,6 +256,34 @@ class VistaTema(QWidget):
         self._etiqueta_ultimas_bolas = QLabel()
         formulario_juego.addRow(self._etiqueta_ultimas_bolas, self._spin_ultimas_bolas)
         formulario_juego.addRow(self._check_sonido)
+
+        # Campos "de preparación" (decisión DU-7, tarea 4.21): viven en el
+        # objeto completo que autoguarda esta vista — a diferencia de los
+        # "de directo" (modo, sonido_bola, voz, volumen_musica), que se
+        # editan desde la sección Sorteo y se persisten sueltos con
+        # `repo_evento.actualizar_juego` para no pisarse con esto.
+        self._check_pausa_al_ganador = QCheckBox()
+        self._check_pausa_al_ganador.toggled.connect(self._marcar_cambio)
+        self._check_confirmar_extraccion = QCheckBox()
+        self._check_confirmar_extraccion.toggled.connect(self._marcar_cambio)
+        self._combo_sin_reclamo = QComboBox()
+        self._combo_sin_reclamo.addItem("", "continuar")
+        self._combo_sin_reclamo.addItem("", "cerrar")
+        self._combo_sin_reclamo.currentIndexChanged.connect(self._marcar_cambio)
+        self._spin_segundos_reclamo = QSpinBox()
+        self._spin_segundos_reclamo.setRange(0, 600)
+        self._spin_segundos_reclamo.setSpecialValueText(" ")  # 0 = sin límite (se aclara al lado)
+        self._spin_segundos_reclamo.valueChanged.connect(self._marcar_cambio)
+        self._campo_canal_reclamo = QLineEdit()
+        self._campo_canal_reclamo.textChanged.connect(self._marcar_cambio)
+        self._etiqueta_sin_reclamo = QLabel()
+        self._etiqueta_segundos_reclamo = QLabel()
+        self._etiqueta_canal_reclamo = QLabel()
+        formulario_juego.addRow(self._check_pausa_al_ganador)
+        formulario_juego.addRow(self._check_confirmar_extraccion)
+        formulario_juego.addRow(self._etiqueta_sin_reclamo, self._combo_sin_reclamo)
+        formulario_juego.addRow(self._etiqueta_segundos_reclamo, self._spin_segundos_reclamo)
+        formulario_juego.addRow(self._etiqueta_canal_reclamo, self._campo_canal_reclamo)
         self._grupo_juego.setLayout(formulario_juego)
 
         distribucion.addWidget(self._grupo_colores)
@@ -331,11 +360,27 @@ class VistaTema(QWidget):
         )
 
     def _leer_formulario(self) -> TemaDashboard:
-        from bingo.dominio.tema import (
-            FONDO_TRANSPARENTE,
-            ConfigBannerTexto,
-            ConfigColores,
-            ConfigJuego,
+        from bingo.dominio.tema import FONDO_TRANSPARENTE, ConfigBannerTexto, ConfigColores
+
+        # Los campos "de directo" de `ConfigJuego` (modo, intervalo_seg,
+        # sonido_bola, voz, idioma_voz, volumen_musica — decisión DU-7) los
+        # edita la sección Sorteo y los persiste sueltos con
+        # `repo_evento.actualizar_juego`, nunca este editor. Partir de
+        # `self._tema.juego` en vez de `ConfigJuego()` a secas es lo que
+        # evita que cada autoguardado de esta vista los reviva a sus
+        # valores por defecto (hallazgo encontrado al escribir la tarea
+        # 4.21: antes de este `dataclasses.replace`, tocar cualquier campo
+        # aquí — incluida una posición de bloque — borraba en silencio
+        # cualquier cambio de "de directo" hecho desde Sorteo).
+        juego = dataclasses.replace(
+            self._tema.juego,
+            mostrar_ultimas_bolas=self._spin_ultimas_bolas.value(),
+            sonido_activado=self._check_sonido.isChecked(),
+            pausa_al_ganador=self._check_pausa_al_ganador.isChecked(),
+            confirmar_extraccion=self._check_confirmar_extraccion.isChecked(),
+            sin_reclamo=self._combo_sin_reclamo.currentData() or "continuar",
+            segundos_reclamo=self._spin_segundos_reclamo.value(),
+            canal_reclamo=self._campo_canal_reclamo.text(),
         )
 
         tema = TemaDashboard(
@@ -349,20 +394,18 @@ class VistaTema(QWidget):
                 texto=self._color_texto.color,
                 acento=self._color_acento.color,
                 tablero_marcado=self._color_tablero_marcado.color,
+                numero_actual=self._color_numero_actual.color,
             ),
             imagen_fondo=self._imagen_fondo_actual,
-            bombo=self._leer_bloque(self._campos_bloque["bombo"]),
-            tablero_75=self._leer_bloque(self._campos_bloque["tablero_75"]),
-            contador_bolas=self._leer_bloque(self._campos_bloque["contador_bolas"]),
-            reloj=self._leer_bloque(self._campos_bloque["reloj"]),
             banner_texto=ConfigBannerTexto(
                 visible=self._campos_banner["visible"].isChecked(),
                 texto=self._campos_banner["texto"].text(),
             ),
-            juego=ConfigJuego(
-                mostrar_ultimas_bolas=self._spin_ultimas_bolas.value(),
-                sonido_activado=self._check_sonido.isChecked(),
-            ),
+            juego=juego,
+            idioma_publico=self._tema.idioma_publico,
+            pantalla_bienvenida=self._tema.pantalla_bienvenida,
+            pantalla_cierre=self._tema.pantalla_cierre,
+            **{clave: self._leer_bloque(campos) for clave, campos in self._campos_bloque.items()},
         )
         return tema
 
@@ -386,18 +429,23 @@ class VistaTema(QWidget):
             self._color_texto.establecer_color(tema.colores.texto)
             self._color_acento.establecer_color(tema.colores.acento)
             self._color_tablero_marcado.establecer_color(tema.colores.tablero_marcado)
+            self._color_numero_actual.establecer_color(tema.colores.numero_actual)
             self._imagen_fondo_actual = tema.imagen_fondo
             self._actualizar_etiqueta_imagen()
 
-            self._cargar_bloque(self._campos_bloque["bombo"], tema.bombo)
-            self._cargar_bloque(self._campos_bloque["tablero_75"], tema.tablero_75)
-            self._cargar_bloque(self._campos_bloque["contador_bolas"], tema.contador_bolas)
-            self._cargar_bloque(self._campos_bloque["reloj"], tema.reloj)
+            for clave, campos in self._campos_bloque.items():
+                self._cargar_bloque(campos, getattr(tema, clave))
             self._campos_banner["visible"].setChecked(tema.banner_texto.visible)
             self._campos_banner["texto"].setText(tema.banner_texto.texto)
 
             self._spin_ultimas_bolas.setValue(tema.juego.mostrar_ultimas_bolas)
             self._check_sonido.setChecked(tema.juego.sonido_activado)
+            self._check_pausa_al_ganador.setChecked(tema.juego.pausa_al_ganador)
+            self._check_confirmar_extraccion.setChecked(tema.juego.confirmar_extraccion)
+            indice_sin_reclamo = self._combo_sin_reclamo.findData(tema.juego.sin_reclamo)
+            self._combo_sin_reclamo.setCurrentIndex(max(indice_sin_reclamo, 0))
+            self._spin_segundos_reclamo.setValue(tema.juego.segundos_reclamo)
+            self._campo_canal_reclamo.setText(tema.juego.canal_reclamo)
         finally:
             self._actualizando_formulario = False
         self._tema = tema
@@ -474,6 +522,7 @@ class VistaTema(QWidget):
         self._etiqueta_color_texto.setText(t("tema.campo.color_texto"))
         self._etiqueta_color_acento.setText(t("tema.campo.color_acento"))
         self._etiqueta_color_tablero_marcado.setText(t("tema.campo.color_tablero_marcado"))
+        self._etiqueta_color_numero_actual.setText(t("tema.campo.color_numero_actual"))
         self._etiqueta_campo_imagen_fondo.setText(t("tema.campo.imagen_fondo"))
         self._boton_imagen_fondo.setText(t("tema.accion.cargar_imagen_fondo"))
 
@@ -491,4 +540,12 @@ class VistaTema(QWidget):
 
         self._etiqueta_ultimas_bolas.setText(t("tema.campo.mostrar_ultimas_bolas"))
         self._check_sonido.setText(t("tema.campo.sonido_activado"))
+        self._check_pausa_al_ganador.setText(t("tema.campo.pausa_al_ganador"))
+        self._check_confirmar_extraccion.setText(t("tema.campo.confirmar_extraccion"))
+        self._etiqueta_sin_reclamo.setText(t("tema.campo.sin_reclamo"))
+        self._combo_sin_reclamo.setItemText(0, t("tema.campo.sin_reclamo.continuar"))
+        self._combo_sin_reclamo.setItemText(1, t("tema.campo.sin_reclamo.cerrar"))
+        self._etiqueta_segundos_reclamo.setText(t("tema.campo.segundos_reclamo"))
+        self._spin_segundos_reclamo.setSpecialValueText(t("tema.campo.segundos_reclamo.sin_limite"))
+        self._etiqueta_canal_reclamo.setText(t("tema.campo.canal_reclamo"))
         self._lienzo.update()

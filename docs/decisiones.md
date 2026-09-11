@@ -491,3 +491,28 @@ el plan completo:
   base. Llama a `servicio_patrones.asegurar_patrones_sistema` por su
   cuenta en vez de asumir que `__main__.principal()` ya la corrió antes —
   un servicio no debe depender del orden de quien lo invoca.
+- **`dominio.tema.BLOQUES` como fuente única, consumida también por
+  `vista_tema.py` (tarea 4.21, corrección S5-1).** El editor tenía su
+  propia tupla local con solo 4 de los 8 bloques del modelo (faltaban
+  `numero_actual`, `patron_activo`, `imagen_premio`, `logo` — los cuatro
+  que añadió la fase 5); ahora `_LienzoPrevia` y el formulario iteran
+  directamente `dominio.tema.BLOQUES`, así que un bloque nuevo se
+  registra una sola vez y aparece en los dos consumidores a la vez.
+- **Bug real encontrado al escribir esta tarea: cada autoguardado de
+  `VistaTema` reescribía `ConfigJuego` (y `idioma_publico`/
+  `pantalla_bienvenida`/`pantalla_cierre`) enteros con los valores por
+  defecto de la clase — no los del tema vigente.** Mover un bloque un
+  centímetro en el editor borraba en silencio `modo`, `intervalo_seg`,
+  `sonido_bola`, `voz`, `idioma_voz` y `volumen_musica` (los campos "de
+  directo", decisión DU-7, que la sección Sorteo persiste sueltos con
+  `repo_evento.actualizar_juego`) apenas la organización volviera a tocar
+  la pestaña Tema. `_leer_formulario()` ahora parte de
+  `dataclasses.replace(self._tema.juego, ...)` y de los mismos campos de
+  nivel superior de `self._tema`, tocando solo lo que el formulario
+  controla de verdad.
+- **Los cinco campos "de preparación" de `ConfigJuego`
+  (`pausa_al_ganador`, `confirmar_extraccion`, `sin_reclamo`,
+  `segundos_reclamo`, `canal_reclamo`) y el color de `numero_actual`
+  ganan controles en el editor de Tema.** Antes de esta tarea existían en
+  el modelo y en la validación desde 4.1/4.24, pero no había ninguna
+  manera de cambiarlos sin editar `tema_json` a mano.
