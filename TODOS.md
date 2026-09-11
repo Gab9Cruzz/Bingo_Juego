@@ -81,7 +81,11 @@ Formato: **qué** · por qué · esfuerzo (humano / CC) · prioridad · depende 
   Esfuerzo: L / M.
 
 - **Cifrado del respaldo.** El `.zip` lleva datos personales de compradores.
-  Esfuerzo: M / S · Depende de: fase 5.
+  La fase 5 (decisión D11) decidió explícitamente no cifrarlo ahora — ver
+  la nota "Cifrado real del respaldo (AES)" más abajo, con la dependencia
+  concreta (`pyzipper`) ya identificada: sigue disponible para retomar,
+  fase 5 no lo bloquea, solo no lo incluyó.
+  Esfuerzo: M / S · Depende de: nada.
 
 - ~~**Vista previa del cartón junto al formulario de organización.**~~ Resuelto
   (fase 3), pero no donde DG-3 lo imaginaba: la plantilla (y por tanto la
@@ -116,10 +120,8 @@ Formato: **qué** · por qué · esfuerzo (humano / CC) · prioridad · depende 
   Resuelto en la fase 5 (tarea 4.27): ver la nota de abajo, en la sección
   de la fase 5.
 
-- **Registro central de acciones y atajos.** En la fase 1 basta un diccionario de
-  módulo. Se convierte en registro cuando haya más de una superficie manejada por
-  teclado, o sea en la fase 5.
-  Esfuerzo: S / S · Depende de: fase 5.
+- ~~**Registro central de acciones y atajos.**~~ Resuelto en la fase 5
+  (decisión D12): ver la nota de abajo, en la sección de la fase 5.
 
 - **Fuentes personalizadas cargadas por la organización.** Decisión abierta del
   §16.3 del documento técnico: licencias y registro doble en Qt y ReportLab. La
@@ -165,17 +167,16 @@ Formato: **qué** · por qué · esfuerzo (humano / CC) · prioridad · depende 
 
 ## Añadidos por `/gstack-autoplan` sobre `docs/Fase_4/Contrato_Fase4.md` (2026-09-09)
 
-- **Cifrado del respaldo — sube de P3 a P1.** Ya estaba anotado abajo, pero la fase 4 es la que
-  crea la primera tabla con datos personales. La revisión de ingeniería enumeró **cinco copias
-  sin cifrar** en el disco del operador: `bingo.db`, `bingo.db-wal`, el `.xlsx` de conciliación
-  (que se manda por WhatsApp), el `.xlsx` del informe de errores, y el `.xlsx` de plantilla que
-  devuelve la organización. Deja de ser teórico el día que se implemente esta fase.
-  Esfuerzo: M / S · Depende de: fase 5 (respaldos).
+- ~~**Cifrado del respaldo — sube de P3 a P1.**~~ La fase 5 (decisión D11)
+  llegó a la tarea de respaldos (4.12) y decidió explícitamente no cifrar
+  ahora: `RESPALDO_LEEME.txt` dentro del `.zip` más un aviso en pantalla,
+  con la dependencia concreta (`pyzipper`) ya identificada para cuando se
+  retome. Riesgo asumido, no limitación técnica ni deuda olvidada — ver la
+  nota completa más abajo.
 
-- **`ui/espacio_evento.py` deja de escalar por apéndice.** La fase 4 lo lleva a siete u ocho
-  secciones en el riel del evento; la fase 5 añade Transmisión. Anotado por la revisión de
-  diseño: no hace falta resolverlo ahora, pero conviene no encontrárselo por sorpresa.
-  Esfuerzo: M / S · Depende de: fase 5.
+- ~~**`ui/espacio_evento.py` deja de escalar por apéndice.**~~ Resuelto en
+  la fase 5 (decisión D10 + DU-16) — ver la nota más abajo, en la sección
+  de la fase 5.
 
 - **Historial de conciliación entre eventos.** Fuera del contrato de la fase 4, que solo pide
   el reporte por evento. Útil para una organización que hace bingos periódicos.
@@ -351,13 +352,15 @@ Lo aceptado está en `docs/Fase_5/Plan_Implementacion_Fase5.md` §4; esto es lo 
   degradarse. Prueba:
   `test_modo_vivo_degrada_error_no_terminal_pero_no_uno_terminal`.
 
-- ~~**Registro central de acciones y atajos.**~~ Entra en la fase 5 (decisión D12):
-  tres ámbitos de teclado (global, sorteo, transmisión) y el mismo `Ctrl+N` ya
-  significa dos cosas distintas según la vista.
+- ~~**Registro central de acciones y atajos.**~~ Resuelto en la fase 5
+  (decisión D12, `ui/atajos.py::RegistroAtajos`): tres ámbitos de teclado
+  (global, sorteo, transmisión) — el mismo `Ctrl+N` ya significaba dos
+  cosas distintas según la vista.
 
-- ~~**`ui/espacio_evento.py` deja de escalar por apéndice.**~~ Entra en la fase 5
-  (decisión D10 + DU-16): el riel se agrupa en Preparación y Evento, con las ocho
-  secciones finales enumeradas en orden.
+- ~~**`ui/espacio_evento.py` deja de escalar por apéndice.**~~ Resuelto en
+  la fase 5 (decisión D10 + DU-16): el riel se agrupa en Preparación y
+  Evento, con las nueve secciones finales enumeradas en orden (la novena,
+  Auditoría, la añadió la tarea 4.19).
 
 - **`ronda.premio_valor` (REAL) se acepta como columna muerta permanente.** La
   revisión llegó a proponer reconstruir `ronda` en la 004 para eliminarla, y se

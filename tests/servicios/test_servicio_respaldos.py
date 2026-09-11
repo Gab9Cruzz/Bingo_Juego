@@ -42,6 +42,31 @@ def test_exportar_crea_un_zip_con_la_base_y_el_leeme(
         assert "datos personales" in leeme
 
 
+@pytest.mark.lento
+def test_exportar_con_10000_cartones_es_razonablemente_rapido(
+    con: sqlite3.Connection, bingo_home: Path
+) -> None:
+    """Marcada 'lento' por el propio plan de la fase 5 (tarea 4.16): un
+    salón lleno puede dejar miles de cartones en la base, y el respaldo no
+    puede tardar minutos la noche del evento — sqlite3.Connection.backup()
+    (API de respaldo en línea) es la apuesta de que sí escala."""
+    import time
+
+    from bingo.servicios import servicio_cartones
+
+    evento = _evento_simple(con)
+    servicio_cartones.generar_lote(con, evento.id, 10_000, "VOL", semilla="volumen")
+    con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+    inicio = time.perf_counter()
+    ruta_zip = servicio_respaldos.exportar(evento.id)
+    duracion = time.perf_counter() - inicio
+
+    assert ruta_zip is not None
+    assert ruta_zip.exists()
+    assert duracion < 30.0, f"Tardó {duracion:.1f}s, se esperaba menos de 30s"
+
+
 def test_exportar_evento_inexistente_falla(con: sqlite3.Connection, bingo_home: Path) -> None:
     with pytest.raises(ErrorNoEncontrado):
         servicio_respaldos.exportar(999_999)
