@@ -29,10 +29,12 @@ from __future__ import annotations
 
 import contextlib
 import re
+import shutil
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import resources
+from pathlib import Path
 
 from bingo.utilidades.errores import ErrorMigracion
 
@@ -150,6 +152,32 @@ def _verificar_base_a_medias(con: sqlite3.Connection, version: int) -> None:
         )
 
 
+def _copia_previa_a_migrar(con: sqlite3.Connection, version_previa: int) -> None:
+    """Copia previa a aplicar cualquier migración pendiente (corrección
+    S5-14, hallazgo B5, crítico): si la versión nueva falla en el equipo del
+    operador la noche del evento, la base ya migró y el instalador anterior
+    no la entiende — sin esta copia no hay vuelta atrás.
+
+    **El checkpoint no es opcional.** En WAL los datos confirmados pueden
+    estar íntegramente en `bingo.db-wal`; copiar solo `bingo.db` produce una
+    copia vacía o rancia. Una sola copia por versión: si ya existe, no se
+    pisa (no tiene sentido sobrescribir con una base más nueva lo que debía
+    ser la foto de la versión anterior).
+
+    Sin archivo real (`:memory:`, o cualquier base sin `file` en
+    `PRAGMA database_list`) no hay nada que copiar — no es un error.
+    """
+    fila = con.execute("PRAGMA database_list").fetchone()
+    ruta_texto = fila["file"] if fila else ""
+    if not ruta_texto:
+        return
+    con.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    ruta = Path(ruta_texto)
+    copia = ruta.with_name(f"{ruta.name}.pre-{version_previa}")
+    if not copia.exists():
+        shutil.copyfile(ruta, copia)
+
+
 def aplicar_migraciones(con: sqlite3.Connection) -> list[int]:
     """Aplica las migraciones pendientes, en orden, cada una en su propia transacción.
 
@@ -169,8 +197,12 @@ def aplicar_migraciones(con: sqlite3.Connection) -> list[int]:
             detalle=f"schema_version={version} > máxima migración disponible={maximo_disponible}",
         )
 
+    pendientes = migraciones_pendientes(version)
+    if pendientes:
+        _copia_previa_a_migrar(con, version)
+
     aplicadas: list[int] = []
-    for migracion in migraciones_pendientes(version):
+    for migracion in pendientes:
         _aplicar_una(con, migracion)
         aplicadas.append(migracion.numero)
     return aplicadas

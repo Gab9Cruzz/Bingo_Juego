@@ -262,6 +262,110 @@ def test_migracion_004_sobre_base_poblada_por_003(bingo_home, tmp_path: Path, mo
         con.close()
 
 
+def test_copia_previa_conserva_filas_sin_cerrar(tmp_path: Path) -> None:
+    """Tarea 4.22, hallazgo B5 (crítico): la copia debe incluir las filas ya
+    confirmadas aunque la conexión de origen siga abierta — por eso el
+    checkpoint de WAL antes de copiar no es opcional (en WAL, los datos
+    confirmados pueden vivir solo en `bingo.db-wal`)."""
+    ruta_bd_prueba = tmp_path / "bingo.db"
+    con = sqlite3.connect(ruta_bd_prueba)
+    con.row_factory = sqlite3.Row
+    try:
+        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("CREATE TABLE t (x INTEGER)")
+        con.executemany("INSERT INTO t (x) VALUES (?)", [(1,), (2,), (3,)])
+        con.commit()
+
+        migraciones._copia_previa_a_migrar(con, 3)
+
+        copia = ruta_bd_prueba.with_name("bingo.db.pre-3")
+        assert copia.exists()
+        con_copia = sqlite3.connect(copia)
+        try:
+            filas = con_copia.execute("SELECT x FROM t ORDER BY x").fetchall()
+            assert [f[0] for f in filas] == [1, 2, 3]
+        finally:
+            con_copia.close()
+    finally:
+        con.close()
+
+
+def test_copia_previa_no_se_pisa_si_ya_existe(tmp_path: Path) -> None:
+    """Una sola copia por versión: no tiene sentido pisar con datos más
+    nuevos lo que debía ser la foto de la versión anterior."""
+    ruta_bd_prueba = tmp_path / "bingo.db"
+    con = sqlite3.connect(ruta_bd_prueba)
+    con.row_factory = sqlite3.Row
+    try:
+        con.execute("CREATE TABLE t (x INTEGER)")
+        con.commit()
+        migraciones._copia_previa_a_migrar(con, 3)
+        copia = ruta_bd_prueba.with_name("bingo.db.pre-3")
+        contenido_original = copia.read_bytes()
+
+        con.execute("INSERT INTO t (x) VALUES (99)")
+        con.commit()
+        migraciones._copia_previa_a_migrar(con, 3)
+
+        assert copia.read_bytes() == contenido_original
+    finally:
+        con.close()
+
+
+def test_copia_previa_sin_archivo_real_no_falla() -> None:
+    """`:memory:` (o cualquier base sin archivo en `PRAGMA database_list`):
+    no hay nada que copiar, y eso no es un error."""
+    con = sqlite3.connect(":memory:")
+    try:
+        migraciones._copia_previa_a_migrar(con, 1)
+    finally:
+        con.close()
+
+
+def test_aplicar_004_sobre_base_de_la_003_deja_copia_pre_3(
+    bingo_home, tmp_path: Path, monkeypatch
+) -> None:
+    """Tarea 4.22 (corrección S5-14, hallazgo B5 crítico): aplicar la 004
+    sobre una base con datos de la 003 debe dejar `bingo.db.pre-3` con el
+    contenido íntegro anterior a la migración."""
+    from bingo.config.rutas import ruta_bd
+
+    con = abrir_conexion(synchronous="OFF")
+    try:
+        carpeta = tmp_path / "solo_001_002_003"
+        carpeta.mkdir()
+        migraciones_reales = migraciones._resolver_directorio()
+        for numero in ("001_inicial.sql", "002_fase3.sql", "003_fase4.sql"):
+            (carpeta / numero).write_bytes((migraciones_reales / numero).read_bytes())
+        _apuntar_a_directorio_temporal(monkeypatch, carpeta)
+        migraciones.aplicar_migraciones(con)
+        assert migraciones.version_actual(con) == 3
+
+        con.execute(
+            "INSERT INTO organizacion (nombre, creada_en) VALUES ('Org', '2026-01-01T00:00:00Z')"
+        )
+        con.commit()
+
+        monkeypatch.setattr(migraciones, "_resolver_directorio", lambda: migraciones_reales)
+        aplicadas = migraciones.aplicar_migraciones(con)
+        assert aplicadas == [4]
+
+        copia = ruta_bd().with_name("bingo.db.pre-3")
+        assert copia.exists()
+        con_copia = sqlite3.connect(copia)
+        con_copia.row_factory = sqlite3.Row
+        try:
+            assert migraciones.version_actual(con_copia) == 3
+            nombre = con_copia.execute(
+                "SELECT nombre FROM organizacion WHERE id = 1"
+            ).fetchone()[0]
+            assert nombre == "Org"
+        finally:
+            con_copia.close()
+    finally:
+        con.close()
+
+
 def test_base_a_medias_detectada(bingo_home) -> None:
     """G34: tablas creadas pero `schema_version` vacía -> error accionable, no reintento ciego."""
     con = abrir_conexion(synchronous="OFF")
