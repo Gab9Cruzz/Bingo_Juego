@@ -317,3 +317,15 @@ el plan completo:
   (hallazgo E-11), con un sondeo de bloqueo previo:** si otra instancia
   sigue corriendo sobre los datos que se van a reemplazar, se niega a
   continuar en vez de mover una base que otro proceso tiene abierta.
+- **Copia previa a aplicar cualquier migración pendiente (tarea 4.22,
+  corrección S5-14, hallazgo B5, crítico).** `aplicar_migraciones` corre
+  `PRAGMA wal_checkpoint(TRUNCATE)` y copia `bingo.db` a
+  `bingo.db.pre-<version_actual>` antes de tocar el esquema — si la
+  migración nueva falla en el equipo del operador la noche del evento, la
+  base ya migró a medias y el instalador anterior no la entiende. El
+  checkpoint no es opcional: en WAL los datos confirmados pueden vivir
+  solo en `bingo.db-wal`, y copiar solo `bingo.db` daría una foto vacía o
+  rancia. Una sola copia por versión (si `.pre-N` ya existe, no se pisa) y
+  sin efecto sobre `:memory:` u otra base sin archivo real en
+  `PRAGMA database_list` — ahí no hay nada que copiar, y eso no es un
+  error.

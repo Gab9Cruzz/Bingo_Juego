@@ -316,6 +316,7 @@ def test_copia_previa_sin_archivo_real_no_falla() -> None:
     """`:memory:` (o cualquier base sin archivo en `PRAGMA database_list`):
     no hay nada que copiar, y eso no es un error."""
     con = sqlite3.connect(":memory:")
+    con.row_factory = sqlite3.Row
     try:
         migraciones._copia_previa_a_migrar(con, 1)
     finally:
@@ -356,9 +357,7 @@ def test_aplicar_004_sobre_base_de_la_003_deja_copia_pre_3(
         con_copia.row_factory = sqlite3.Row
         try:
             assert migraciones.version_actual(con_copia) == 3
-            nombre = con_copia.execute(
-                "SELECT nombre FROM organizacion WHERE id = 1"
-            ).fetchone()[0]
+            nombre = con_copia.execute("SELECT nombre FROM organizacion WHERE id = 1").fetchone()[0]
             assert nombre == "Org"
         finally:
             con_copia.close()
