@@ -87,9 +87,21 @@ class _LienzoPrevia(QWidget):
             origen_x = (ancho_disponible - ancho_lienzo) / 2
             origen_y = (alto_disponible - alto_lienzo) / 2
 
+            from bingo.dominio.tema import FONDO_TRANSPARENTE
+
+            # Tarea 4.18: "transparente" no es un color que `QColor` sepa
+            # leer — la vista previa (igual que `ui/transmision/bloques.py`,
+            # que duplica esta lógica hasta que la tarea 4.21 unifique
+            # ambos consumidores de `dominio.tema`) pinta el croma en su
+            # lugar.
+            color_fondo = (
+                self._tema.colores.croma
+                if self._tema.colores.fondo == FONDO_TRANSPARENTE
+                else self._tema.colores.fondo
+            )
             pintor.fillRect(
                 QRectF(origen_x, origen_y, ancho_lienzo, alto_lienzo),
-                QColor(self._tema.colores.fondo),
+                QColor(color_fondo),
             )
             pintor.setPen(QPen(QColor("#33334a")))
             pintor.drawRect(QRectF(origen_x, origen_y, ancho_lienzo, alto_lienzo))
@@ -184,6 +196,19 @@ class VistaTema(QWidget):
         formulario_colores = QFormLayout()
         self._color_fondo = BotonColor("#0b0b14")
         self._color_fondo.clicked.connect(self._marcar_cambio)
+        # Tarea 4.18 (expansión E2): "transparente" no es un color que
+        # `BotonColor` sepa mostrar — se guarda como una casilla aparte, y
+        # `_color_fondo` conserva siempre el último hexadecimal elegido
+        # (para no perderlo si se destilda la casilla más tarde). El croma
+        # es lo que de verdad se pinta cuando está tildada, para quien
+        # componga en OBS con un filtro de croma.
+        self._casilla_fondo_transparente = QCheckBox()
+        self._casilla_fondo_transparente.toggled.connect(self._alternar_fondo_transparente)
+        self._color_croma = BotonColor("#00ff00")
+        self._color_croma.clicked.connect(self._marcar_cambio)
+        self._color_croma.setVisible(False)
+        self._etiqueta_color_croma = QLabel()
+        self._etiqueta_color_croma.setVisible(False)
         self._color_texto = BotonColor("#f2f2f7")
         self._color_texto.clicked.connect(self._marcar_cambio)
         self._color_acento = BotonColor("#5b8def")
@@ -195,6 +220,8 @@ class VistaTema(QWidget):
         self._etiqueta_color_acento = QLabel()
         self._etiqueta_color_tablero_marcado = QLabel()
         formulario_colores.addRow(self._etiqueta_color_fondo, self._fila_color(self._color_fondo))
+        formulario_colores.addRow(self._casilla_fondo_transparente)
+        formulario_colores.addRow(self._etiqueta_color_croma, self._fila_color(self._color_croma))
         formulario_colores.addRow(self._etiqueta_color_texto, self._fila_color(self._color_texto))
         formulario_colores.addRow(self._etiqueta_color_acento, self._fila_color(self._color_acento))
         formulario_colores.addRow(
@@ -304,11 +331,21 @@ class VistaTema(QWidget):
         )
 
     def _leer_formulario(self) -> TemaDashboard:
-        from bingo.dominio.tema import ConfigBannerTexto, ConfigColores, ConfigJuego
+        from bingo.dominio.tema import (
+            FONDO_TRANSPARENTE,
+            ConfigBannerTexto,
+            ConfigColores,
+            ConfigJuego,
+        )
 
         tema = TemaDashboard(
             colores=ConfigColores(
-                fondo=self._color_fondo.color,
+                fondo=(
+                    FONDO_TRANSPARENTE
+                    if self._casilla_fondo_transparente.isChecked()
+                    else self._color_fondo.color
+                ),
+                croma=self._color_croma.color,
                 texto=self._color_texto.color,
                 acento=self._color_acento.color,
                 tablero_marcado=self._color_tablero_marcado.color,
@@ -338,7 +375,14 @@ class VistaTema(QWidget):
     def _cargar_en_formulario(self, tema: TemaDashboard) -> None:
         self._actualizando_formulario = True
         try:
-            self._color_fondo.establecer_color(tema.colores.fondo)
+            from bingo.dominio.tema import FONDO_TRANSPARENTE
+
+            es_transparente = tema.colores.fondo == FONDO_TRANSPARENTE
+            self._casilla_fondo_transparente.setChecked(es_transparente)
+            self._alternar_fondo_transparente(es_transparente)
+            if not es_transparente:
+                self._color_fondo.establecer_color(tema.colores.fondo)
+            self._color_croma.establecer_color(tema.colores.croma)
             self._color_texto.establecer_color(tema.colores.texto)
             self._color_acento.establecer_color(tema.colores.acento)
             self._color_tablero_marcado.establecer_color(tema.colores.tablero_marcado)
@@ -374,6 +418,13 @@ class VistaTema(QWidget):
         self._tema = self._leer_formulario()
         self._lienzo.actualizar(self._tema)
         self._temporizador.start()
+
+    def _alternar_fondo_transparente(self, transparente: bool) -> None:
+        self._color_fondo.setVisible(not transparente)
+        self._etiqueta_color_fondo.setVisible(not transparente)
+        self._color_croma.setVisible(transparente)
+        self._etiqueta_color_croma.setVisible(transparente)
+        self._marcar_cambio()
 
     def _cargar_imagen_fondo(self) -> None:
         from pathlib import Path
@@ -418,6 +469,8 @@ class VistaTema(QWidget):
         self._grupo_juego.setTitle(t("tema.seccion.juego"))
 
         self._etiqueta_color_fondo.setText(t("tema.campo.color_fondo"))
+        self._casilla_fondo_transparente.setText(t("tema.campo.fondo_transparente"))
+        self._etiqueta_color_croma.setText(t("tema.campo.color_croma"))
         self._etiqueta_color_texto.setText(t("tema.campo.color_texto"))
         self._etiqueta_color_acento.setText(t("tema.campo.color_acento"))
         self._etiqueta_color_tablero_marcado.setText(t("tema.campo.color_tablero_marcado"))

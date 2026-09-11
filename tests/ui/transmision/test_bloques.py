@@ -30,6 +30,54 @@ def test_pintar_fotograma_no_lanza_en_ningun_estado(qapp, estado: EstadoTransmis
     _pintar(estado)
 
 
+def test_pintar_fondo_transparente_no_lanza(qapp) -> None:
+    """Tarea 4.18: `QColor("transparente")` sería inválido en silencio —
+    esto solo prueba que el fotograma completo sigue renderizando, no un
+    color de píxel (imposible de mantener aquí)."""
+    import dataclasses
+
+    from bingo.dominio.tema import FONDO_TRANSPARENTE
+
+    tema = TemaDashboard.por_defecto()
+    tema = dataclasses.replace(
+        tema, colores=dataclasses.replace(tema.colores, fondo=FONDO_TRANSPARENTE, croma="#00ff00")
+    )
+    lienzo = QPixmap(400, 225)
+    pintor = QPainter(lienzo)
+    try:
+        ctx = ContextoTransmision(
+            tema=tema,
+            estado=EstadoTransmision.BIENVENIDA,
+            idioma="es",
+            numero_actual=42,
+            numeros_extraidos=frozenset({1, 2, 42}),
+            patron_mascara=mascara([(0, 0)]),
+        )
+        pintar_fotograma(pintor, ctx)
+    finally:
+        pintor.end()
+
+
+def test_color_fondo_resuelve_al_croma_cuando_transparente() -> None:
+    import dataclasses
+
+    from bingo.dominio.tema import FONDO_TRANSPARENTE
+    from bingo.ui.transmision.bloques import _color_fondo
+
+    tema = TemaDashboard.por_defecto()
+    tema = dataclasses.replace(
+        tema, colores=dataclasses.replace(tema.colores, fondo=FONDO_TRANSPARENTE, croma="#123456")
+    )
+    assert _color_fondo(tema).name() == "#123456"
+
+
+def test_color_fondo_usa_fondo_cuando_no_es_transparente() -> None:
+    from bingo.ui.transmision.bloques import _color_fondo
+
+    tema = TemaDashboard.por_defecto()
+    assert _color_fondo(tema).name() == tema.colores.fondo
+
+
 def test_hay_carton_ganador_no_recibe_codigo_ni_nombre_en_el_contexto_de_pintado(qapp) -> None:
     """No es una prueba de píxeles (imposible de mantener): el pintor de
     este estado nunca recibe `codigo_ganador`/`nombre_ganador` como

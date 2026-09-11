@@ -416,3 +416,17 @@ el plan completo:
   (`test_modo_vivo_degrada_error_no_terminal_pero_no_uno_terminal`,
   `tests/ui/test_espacio_evento.py`) para fijar la garantía como
   regresión.
+- **Fondo transparente / croma para OBS (tarea 4.18, expansión E2).**
+  `ConfigColores.fondo` acepta el valor especial `dominio.tema.
+  FONDO_TRANSPARENTE` ("transparente"), y `ConfigColores.croma` (verde
+  `#00ff00` por defecto) es el color plano que de verdad se pinta ahí —
+  para quien componga en OBS con un filtro de croma. `QColor("transparente")`
+  sería un color inválido en silencio (Qt no lanza, pinta negro); un
+  `_color_fondo(tema)` en `ui/transmision/bloques.py` (duplicado en
+  `vista_tema.py::_LienzoPrevia` hasta que la tarea 4.21 unifique ambos
+  consumidores de `dominio.tema`) resuelve al croma cuando corresponde,
+  igual que `advertencias_contraste()` cuando mide contra un fondo
+  transparente. En el editor, una casilla decide qué se guarda —
+  `BotonColor` nunca necesita saber mostrar "transparente": conserva
+  siempre el último hexadecimal elegido, para no perderlo si se destilda
+  más tarde.

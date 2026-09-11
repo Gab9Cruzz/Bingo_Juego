@@ -160,6 +160,37 @@ def test_validar_rechaza_modo_invalido() -> None:
         validar(tema)
 
 
+def test_validar_permite_fondo_transparente() -> None:
+    """Tarea 4.18 (expansión E2): `"transparente"` es el único valor no
+    hexadecimal válido de `colores.fondo` — para OBS con filtro de croma."""
+    from bingo.dominio.tema import FONDO_TRANSPARENTE
+
+    base = TemaDashboard.por_defecto()
+    tema = dataclasses.replace(
+        base, colores=dataclasses.replace(base.colores, fondo=FONDO_TRANSPARENTE)
+    )
+    validar(tema)  # no lanza
+
+
+def test_validar_rechaza_croma_invalido() -> None:
+    base = TemaDashboard.por_defecto()
+    tema = dataclasses.replace(base, colores=dataclasses.replace(base.colores, croma="no-es-color"))
+    with pytest.raises(ErrorValidacion):
+        validar(tema)
+
+
+def test_roundtrip_conserva_fondo_transparente_y_croma() -> None:
+    from bingo.dominio.tema import FONDO_TRANSPARENTE
+
+    base = TemaDashboard.por_defecto()
+    tema = dataclasses.replace(
+        base, colores=dataclasses.replace(base.colores, fondo=FONDO_TRANSPARENTE, croma="#ff00ff")
+    )
+    recuperado = TemaDashboard.desde_json(tema.a_json())
+    assert recuperado.colores.fondo == FONDO_TRANSPARENTE
+    assert recuperado.colores.croma == "#ff00ff"
+
+
 def test_advertencias_contraste_preset_por_defecto_no_avisa() -> None:
     from bingo.dominio.tema import advertencias_contraste
 
@@ -173,6 +204,23 @@ def test_advertencias_contraste_detecta_bajo_contraste() -> None:
     tema = dataclasses.replace(
         base,
         colores=dataclasses.replace(base.colores, texto="#0b0b14"),  # igual al fondo
+    )
+    avisos = advertencias_contraste(tema)
+    assert "tema.aviso.contraste_texto" in avisos
+
+
+def test_advertencias_contraste_con_fondo_transparente_usa_el_croma() -> None:
+    """Tarea 4.18: con `fondo == "transparente"` no hay contra qué medir
+    contraste salvo el croma — es lo que de verdad pinta la vista previa y
+    lo que ve el operador que abre la transmisión sin OBS delante."""
+    from bingo.dominio.tema import FONDO_TRANSPARENTE, advertencias_contraste
+
+    base = TemaDashboard.por_defecto()
+    tema = dataclasses.replace(
+        base,
+        colores=dataclasses.replace(
+            base.colores, fondo=FONDO_TRANSPARENTE, croma=base.colores.texto
+        ),
     )
     avisos = advertencias_contraste(tema)
     assert "tema.aviso.contraste_texto" in avisos

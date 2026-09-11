@@ -361,6 +361,8 @@
   "tema.seccion.bloques": "Bloques",
   "tema.seccion.juego": "Ajustes de juego",
   "tema.campo.color_fondo": "Color de fondo",
+  "tema.campo.fondo_transparente": "Fondo transparente (croma para OBS)",
+  "tema.campo.color_croma": "Color del croma",
   "tema.campo.color_texto": "Color de texto",
   "tema.campo.color_acento": "Color de acento",
   "tema.campo.color_tablero_marcado": "Color de número marcado",

@@ -66,6 +66,12 @@ def _combinar[T](cls: type[T], datos: object, por_defecto: T | None = None) -> T
     return cls(**base)  # type: ignore[call-arg]
 
 
+#: Valor especial de `ConfigColores.fondo` (tarea 4.18, expansión E2): el
+#: lienzo de transmisión se pinta sin fondo, para componer en OBS con un
+#: filtro de croma sobre `ConfigColores.croma`.
+FONDO_TRANSPARENTE = "transparente"
+
+
 @dataclass(slots=True)
 class ConfigColores:
     fondo: str = "#0b0b14"
@@ -78,6 +84,10 @@ class ConfigColores:
     # `#ffd60a`: el doc técnico §7 ya lo definía así; el modelo de la fase 4
     # nunca llegó a incluir este campo (hallazgo DU-6).
     numero_actual: str = "#ffd60a"
+    # Tarea 4.18: color plano que pinta el lienzo cuando `fondo ==
+    # FONDO_TRANSPARENTE` — es lo que un operador sin OBS (o en la vista
+    # previa del editor) ve en vez de "nada". Verde por convención de croma.
+    croma: str = "#00ff00"
 
 
 @dataclass(slots=True)
@@ -308,7 +318,13 @@ def validar(tema: TemaDashboard) -> None:
     es un requisito duro: por debajo de eso, en un teléfono con vídeo
     comprimido, no se lee, y no hay imagen de fondo que lo disculpe.
     """
-    _validar_color(tema.colores.fondo, "colores.fondo")
+    # Tarea 4.18: "transparente" es el único valor no hexadecimal válido de
+    # `fondo` — el croma lo valida como cualquier otro color, transparente
+    # o no, porque siempre se pinta con él en algún sitio (vista previa del
+    # editor, o el operador que abre la transmisión sin OBS delante).
+    if tema.colores.fondo != FONDO_TRANSPARENTE:
+        _validar_color(tema.colores.fondo, "colores.fondo")
+    _validar_color(tema.colores.croma, "colores.croma")
     _validar_color(tema.colores.texto, "colores.texto")
     _validar_color(tema.colores.acento, "colores.acento")
     _validar_color(tema.colores.tablero_marcado, "colores.tablero_marcado")
@@ -395,11 +411,15 @@ def advertencias_contraste(tema: TemaDashboard) -> list[str]:
     defecto siempre pasa; una imagen de fondo detrás puede hacer que un
     contraste "bajo" según esta fórmula siga siendo legible en la práctica,
     así que esto avisa, no impide guardar."""
+    # Tarea 4.18: "transparente" no es un color que `contraste()` sepa leer
+    # — el croma es lo que de verdad se ve (vista previa, o transmisión sin
+    # OBS componiendo delante), así que el contraste se mide contra él.
+    fondo = tema.colores.croma if tema.colores.fondo == FONDO_TRANSPARENTE else tema.colores.fondo
     avisos: list[str] = []
-    if contraste(tema.colores.texto, tema.colores.fondo) < UMBRAL_CONTRASTE_TRANSMISION:
+    if contraste(tema.colores.texto, fondo) < UMBRAL_CONTRASTE_TRANSMISION:
         avisos.append("tema.aviso.contraste_texto")
-    if contraste(tema.colores.numero_actual, tema.colores.fondo) < UMBRAL_CONTRASTE_TRANSMISION:
+    if contraste(tema.colores.numero_actual, fondo) < UMBRAL_CONTRASTE_TRANSMISION:
         avisos.append("tema.aviso.contraste_numero_actual")
-    if contraste(tema.colores.tablero_marcado, tema.colores.fondo) < UMBRAL_CONTRASTE_TRANSMISION:
+    if contraste(tema.colores.tablero_marcado, fondo) < UMBRAL_CONTRASTE_TRANSMISION:
         avisos.append("tema.aviso.contraste_tablero_marcado")
     return avisos

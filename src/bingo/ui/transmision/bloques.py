@@ -23,7 +23,7 @@ from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
 
 from bingo.dominio.patron import celdas_desde_mascara
-from bingo.dominio.tema import BLOQUES, ConfigBloque, TemaDashboard
+from bingo.dominio.tema import BLOQUES, FONDO_TRANSPARENTE, ConfigBloque, TemaDashboard
 from bingo.ui.transmision import contenido
 from bingo.ui.transmision.estado_transmision import EstadoTransmision
 
@@ -77,8 +77,19 @@ def _fuente(tamano: float, *, negrita: bool = False) -> QFont:
     return fuente
 
 
+def _color_fondo(tema: TemaDashboard) -> QColor:
+    """Tarea 4.18: `"transparente"` no es un color que `QColor` sepa leer —
+    lo que de verdad se pinta ahí es el croma, para que el filtro de OBS lo
+    reconozca y lo recorte. Sin este indirect, `QColor("transparente")`
+    construiría un color inválido en silencio (Qt no lanza, solo pinta
+    negro), y el fondo "transparente" se vería negro en vez de croma."""
+    if tema.colores.fondo == FONDO_TRANSPARENTE:
+        return QColor(tema.colores.croma)
+    return QColor(tema.colores.fondo)
+
+
 def pintar_fondo(painter: QPainter, tema: TemaDashboard) -> None:
-    painter.fillRect(QRectF(0, 0, ANCHO_LOGICO, ALTO_LOGICO), QColor(tema.colores.fondo))
+    painter.fillRect(QRectF(0, 0, ANCHO_LOGICO, ALTO_LOGICO), _color_fondo(tema))
 
 
 def pintar_numero_actual(painter: QPainter, tema: TemaDashboard, numero: int | None) -> None:
@@ -86,7 +97,7 @@ def pintar_numero_actual(painter: QPainter, tema: TemaDashboard, numero: int | N
     if not bloque.visible:
         return
     rect = _rect_bloque("numero_actual", bloque)
-    painter.fillRect(rect, QColor(tema.colores.fondo).darker(115))
+    painter.fillRect(rect, _color_fondo(tema).darker(115))
     painter.setFont(_fuente(rect.height() * 0.55, negrita=True))
     painter.setPen(QPen(QColor(tema.colores.numero_actual)))
     painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, str(numero) if numero else "—")
@@ -209,7 +220,7 @@ def pintar_banner_texto(painter: QPainter, tema: TemaDashboard) -> None:
 
 
 def _pintar_overlay_fondo(painter: QPainter, tema: TemaDashboard, opacidad: float = 0.85) -> None:
-    color = QColor(tema.colores.fondo)
+    color = _color_fondo(tema)
     color.setAlphaF(opacidad)
     painter.fillRect(QRectF(0, 0, ANCHO_LOGICO, ALTO_LOGICO), color)
 

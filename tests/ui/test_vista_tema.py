@@ -44,3 +44,49 @@ def test_lienzo_se_actualiza_con_cada_cambio(qapp, con, bingo_home) -> None:
     vista._campos_bloque["bombo"]["visible"].setChecked(False)
     vista._marcar_cambio()
     assert vista._lienzo._tema.bombo.visible is False
+
+
+def test_tildar_fondo_transparente_guarda_el_valor_especial(qapp, con, bingo_home) -> None:
+    """Tarea 4.18 (expansión E2): la casilla, no el `BotonColor` de fondo
+    (que nunca sabe mostrar "transparente"), decide qué se guarda."""
+    from bingo.dominio.tema import FONDO_TRANSPARENTE
+
+    con, evento = _preparar(con)
+    vista = VistaTema(con, evento)
+
+    vista._casilla_fondo_transparente.setChecked(True)
+    vista._color_croma.establecer_color("#00ffcc")
+    vista._marcar_cambio()
+    vista._guardar()
+
+    tema_guardado = TemaDashboard.desde_json(repo_evento.obtener(con, evento.id).tema_json)
+    assert tema_guardado.colores.fondo == FONDO_TRANSPARENTE
+    assert tema_guardado.colores.croma == "#00ffcc"
+
+
+def test_destildar_fondo_transparente_vuelve_al_color_elegido(qapp, con, bingo_home) -> None:
+    con, evento = _preparar(con)
+    vista = VistaTema(con, evento)
+
+    vista._casilla_fondo_transparente.setChecked(True)
+    vista._casilla_fondo_transparente.setChecked(False)
+    vista._color_fondo.establecer_color("#123456")
+    vista._marcar_cambio()
+
+    assert vista._tema.colores.fondo == "#123456"
+
+
+def test_cargar_tema_transparente_muestra_la_casilla_tildada(qapp, con, bingo_home) -> None:
+    from bingo.dominio.tema import FONDO_TRANSPARENTE, ConfigColores
+
+    con, evento = _preparar(con)
+    tema = TemaDashboard(colores=ConfigColores(fondo=FONDO_TRANSPARENTE, croma="#ff00ff"))
+    repo_evento.actualizar_tema(con, evento.id, tema.a_json())
+    evento = repo_evento.obtener(con, evento.id)  # `evento` original quedó con tema_json=None
+
+    vista = VistaTema(con, evento)
+
+    assert vista._casilla_fondo_transparente.isChecked()
+    assert vista._color_croma.color == "#ff00ff"
+    assert not vista._color_croma.isHidden()
+    assert vista._color_fondo.isHidden()
