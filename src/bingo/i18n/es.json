@@ -620,6 +620,8 @@
   "sorteo.confirmar_cerrar.titulo": "Cerrar ronda sin ganador confirmado",
   "sorteo.confirmar_cerrar.mensaje": "Todavía quedan bolas en el bombo y ningún ganador confirmado. ¿Cerrar la ronda de todos modos?",
   "sorteo.exito.ronda_cerrada": "Ronda \"{nombre}\" cerrada",
+  "sorteo.cuenta_reclamo.restante": "Tiempo para reclamar: {segundos} s",
+  "sorteo.aviso.cerrada_por_reclamo_vencido": "Ronda \"{nombre}\" cerrada automáticamente: se agotó el tiempo de reclamo",
   "sorteo.exito.ganador_confirmado": "Ganador confirmado: {codigo} · {nombre}",
   "sorteo.exito.reclamo_registrado": "Reclamo de {codigo} registrado",
   "sorteo.aviso.log_fallo": "No se pudo escribir el log de partida en disco. El sorteo continúa; revisa el espacio en disco.",

@@ -35,6 +35,23 @@ def test_arranca_en_bienvenida(qapp, con: sqlite3.Connection, evento_creado, lot
     assert ventana.estado == EstadoTransmision.BIENVENIDA
 
 
+def test_actualizar_segundos_restantes_reclamo_llega_al_contexto(
+    qapp, con: sqlite3.Connection, evento_creado, lote_creado
+) -> None:
+    """Tarea 4.24: la ventana no cuenta el tiempo por su cuenta — solo
+    pinta el valor que `VistaSorteo` le empuja en cada tic."""
+    _motor, puente, _ronda = _preparar(con, evento_creado, lote_creado)
+    ventana = VentanaTransmision(con, evento_creado, puente)
+
+    ventana.actualizar_segundos_restantes_reclamo(42)
+
+    assert ventana._construir_contexto().segundos_restantes_reclamo == 42  # noqa: SLF001
+
+    ventana.actualizar_segundos_restantes_reclamo(None)
+
+    assert ventana._construir_contexto().segundos_restantes_reclamo is None  # noqa: SLF001
+
+
 def test_bola_extraida_actualiza_numero_y_estado(
     qapp, con: sqlite3.Connection, evento_creado, lote_creado
 ) -> None:

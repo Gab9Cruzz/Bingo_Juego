@@ -599,6 +599,8 @@
   "sorteo.confirmar_cerrar.titulo": "Close round without a confirmed winner",
   "sorteo.confirmar_cerrar.mensaje": "There are still balls in the cage and no confirmed winner. Close the round anyway?",
   "sorteo.exito.ronda_cerrada": "Round \"{nombre}\" closed",
+  "sorteo.cuenta_reclamo.restante": "Time left to claim: {segundos} s",
+  "sorteo.aviso.cerrada_por_reclamo_vencido": "Round \"{nombre}\" closed automatically: the claim window ran out",
   "sorteo.exito.ganador_confirmado": "Winner confirmed: {codigo} · {nombre}",
   "sorteo.exito.reclamo_registrado": "Claim for {codigo} registered",
   "sorteo.aviso.log_fallo": "Could not write the game log to disk. The draw continues; check disk space.",

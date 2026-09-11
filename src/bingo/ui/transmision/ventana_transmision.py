@@ -48,6 +48,7 @@ class VentanaTransmision(QWidget):
         self._numero_actual: int | None = None
         self._a_una_bola_cantidad = 0
         self._canal_reclamo = ""
+        self._segundos_restantes_reclamo: int | None = None
         self._codigo_ganador = ""
         self._nombre_ganador = ""
         # Bandera de cierre (ver `closeEvent`): cada receptor la comprueba
@@ -71,6 +72,15 @@ class VentanaTransmision(QWidget):
 
     def establecer_canal_reclamo(self, canal: str) -> None:
         self._canal_reclamo = canal
+        self.update()
+
+    def actualizar_segundos_restantes_reclamo(self, segundos: int | None) -> None:
+        """Tarea 4.24: el temporizador real vive en `VistaSorteo` (la única
+        superficie que sigue viva incluso si esta ventana nunca se abrió);
+        esta ventana solo pinta el valor que le llega en cada tic, sin
+        contar el tiempo por su cuenta — dos relojes independientes
+        divergirían tarde o temprano."""
+        self._segundos_restantes_reclamo = segundos
         self.update()
 
     def actualizar_tema(self, tema: TemaDashboard) -> None:
@@ -169,7 +179,7 @@ class VentanaTransmision(QWidget):
             nombre_patron=nombre_patron,
             premio_texto=premio,
             canal_reclamo=self._canal_reclamo,
-            segundos_restantes_reclamo=self._tema.juego.segundos_reclamo or None,
+            segundos_restantes_reclamo=self._segundos_restantes_reclamo,
             a_una_bola_cantidad=self._a_una_bola_cantidad,
             codigo_ganador=self._codigo_ganador,
             nombre_ganador=self._nombre_ganador,

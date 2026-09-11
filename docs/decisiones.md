@@ -458,3 +458,22 @@ el plan completo:
   `impresion/reporte.py::reporte_auditoria_excel` (único módulo que
   escribe Excel, hallazgo A4 de la fase 4) — "exportar" trae exactamente
   las filas que el panel está mostrando, nunca más.
+- **Cuenta regresiva de reclamo, con el reloj único en `VistaSorteo` (tarea
+  4.24, alcance §6.2).** Los campos de dominio (`segundos_reclamo`,
+  `sin_reclamo`, `canal_reclamo`) y los métodos manuales de
+  `MaquinaEstadoTransmision` (`reclamo_vencido`/
+  `continuar_tras_reclamo_vencido`) ya existían desde 4.9; nadie los
+  llamaba con un temporizador real, y `ContextoTransmision.
+  segundos_restantes_reclamo` recibía siempre el total configurado del
+  tema, nunca un valor que bajara. Ahora `VistaSorteo` arranca un único
+  `QTimer` de 1 s al detectar ganador (`segundos_reclamo == 0` = sin
+  límite, nunca arranca) y en cada tic empuja el valor a
+  `VentanaTransmision.actualizar_segundos_restantes_reclamo()` — la
+  ventana **no cuenta el tiempo por su cuenta**: dos relojes
+  independientes divergirían tarde o temprano. Al agotarse:
+  `sin_reclamo="continuar"` (defecto D8) pinta "reclamo vencido" 5 s y
+  vuelve sola al juego; `sin_reclamo="cerrar"` cierra la ronda
+  **directamente vía el motor**, nunca por el botón manual
+  `_cerrar_ronda()` — ese pide confirmación si quedan bolas (hallazgo C7),
+  y esperar un clic que nadie va a dar congelaría la transmisión en
+  "reclamo vencido" para siempre.

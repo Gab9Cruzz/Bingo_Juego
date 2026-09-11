@@ -96,6 +96,12 @@ class VistaSorteo(QWidget):
         self._ronda_actual = None
         self._patron_actual = None
         self._ultimo_numero: int | None = None
+        # Tarea 4.24 (regla de negocio §6.2 del alcance): cuenta regresiva
+        # de reclamo. `segundos_reclamo == 0` significa sin límite — nunca
+        # arranca el temporizador.
+        self._segundos_restantes_reclamo: int | None = None
+        self._temporizador_reclamo = QTimer(self)
+        self._temporizador_reclamo.timeout.connect(self._tick_reclamo)
 
         tema_inicial = TemaDashboard.desde_json(evento.tema_json)
         self._efectos = sonido.Efectos(activado=tema_inicial.juego.sonido_bola)
@@ -168,8 +174,16 @@ class VistaSorteo(QWidget):
         self._grupo_ganadores.setObjectName("panelGanadores")
         self._grupo_ganadores.setVisible(False)
         self._lista_ganadores = QListWidget()
+        # Tarea 4.24: cuenta regresiva de reclamo — visible en el operador
+        # y en la transmisión (`VentanaTransmision.
+        # actualizar_segundos_restantes_reclamo`), las dos alimentadas por
+        # el mismo temporizador para que nunca se desincronicen.
+        self._etiqueta_cuenta_reclamo = QLabel()
+        self._etiqueta_cuenta_reclamo.setObjectName("etiquetaSecundaria")
+        self._etiqueta_cuenta_reclamo.setVisible(False)
         layout_ganadores = QVBoxLayout(self._grupo_ganadores)
         layout_ganadores.addWidget(self._lista_ganadores)
+        layout_ganadores.addWidget(self._etiqueta_cuenta_reclamo)
 
         columna_secundaria = QVBoxLayout()
         columna_secundaria.addWidget(self._grupo_a_una_bola)
@@ -400,6 +414,7 @@ class VistaSorteo(QWidget):
         self._tablero.reiniciar()
         self._grupo_a_una_bola.setVisible(False)
         self._grupo_ganadores.setVisible(False)
+        self._detener_cuenta_reclamo()
         if ronda is None:
             self._rejilla_patron.setVisible(False)
             self._etiqueta_premio.clear()
@@ -791,6 +806,7 @@ class VistaSorteo(QWidget):
         self._lista_ganadores.clear()
         if not cartones:
             self._grupo_ganadores.setVisible(False)
+            self._detener_cuenta_reclamo()
             return
         self._grupo_ganadores.setVisible(True)
         self._grupo_ganadores.setTitle(t("sorteo.ganadores.titulo", cantidad=len(cartones)))
@@ -800,6 +816,89 @@ class VistaSorteo(QWidget):
             comprador = mapa_compradores.get(carton.carton_id)
             nombre = comprador.nombre if comprador is not None else "?"
             self._lista_ganadores.addItem(QListWidgetItem(f"{carton.codigo} — {nombre}"))
+        self._iniciar_cuenta_reclamo()
+
+    # -- cuenta regresiva de reclamo (tarea 4.24, alcance §6.2) --------------
+
+    def _iniciar_cuenta_reclamo(self) -> None:
+        tema = TemaDashboard.desde_json(self._evento.tema_json)
+        segundos = tema.juego.segundos_reclamo
+        if segundos <= 0:  # 0 = sin límite (decisión D4): nunca arranca
+            self._etiqueta_cuenta_reclamo.setVisible(False)
+            return
+        self._segundos_restantes_reclamo = segundos
+        self._actualizar_etiqueta_cuenta_reclamo()
+        self._temporizador_reclamo.start(1000)
+
+    def _detener_cuenta_reclamo(self) -> None:
+        self._temporizador_reclamo.stop()
+        self._segundos_restantes_reclamo = None
+        self._etiqueta_cuenta_reclamo.setVisible(False)
+        if self._ventana_transmision is not None:
+            self._ventana_transmision.actualizar_segundos_restantes_reclamo(None)
+
+    def _actualizar_etiqueta_cuenta_reclamo(self) -> None:
+        self._etiqueta_cuenta_reclamo.setVisible(True)
+        self._etiqueta_cuenta_reclamo.setText(
+            t("sorteo.cuenta_reclamo.restante", segundos=self._segundos_restantes_reclamo)
+        )
+        if self._ventana_transmision is not None:
+            self._ventana_transmision.actualizar_segundos_restantes_reclamo(
+                self._segundos_restantes_reclamo
+            )
+
+    def _tick_reclamo(self) -> None:
+        if self._segundos_restantes_reclamo is None:
+            self._temporizador_reclamo.stop()
+            return
+        self._segundos_restantes_reclamo -= 1
+        if self._segundos_restantes_reclamo <= 0:
+            self._temporizador_reclamo.stop()
+            self._aplicar_sin_reclamo()
+            return
+        self._actualizar_etiqueta_cuenta_reclamo()
+
+    def _aplicar_sin_reclamo(self) -> None:
+        """Decisión D8: qué pasa si nadie reclama a tiempo. `"continuar"`
+        (defecto) dice la tarjeta de "reclamo vencido" en transmisión y
+        vuelve al juego solo — el motor nunca dejó de poder extraer.
+        `"cerrar"` cierra la ronda sola: sin operador vigilando la cuenta
+        atrás, esperar un clic que puede no llegar dejaría la transmisión
+        congelada en "reclamo vencido" para siempre."""
+        self._etiqueta_cuenta_reclamo.setVisible(False)
+        tema = TemaDashboard.desde_json(self._evento.tema_json)
+        if tema.juego.sin_reclamo == "cerrar":
+            self._cerrar_ronda_por_reclamo_vencido()
+            return
+        if self._ventana_transmision is not None:
+            self._ventana_transmision.reclamo_vencido()
+        QTimer.singleShot(5000, self._continuar_tras_reclamo_vencido)
+
+    def _continuar_tras_reclamo_vencido(self) -> None:
+        if self._ventana_transmision is not None:
+            self._ventana_transmision.continuar_tras_reclamo_vencido()
+
+    def _cerrar_ronda_por_reclamo_vencido(self) -> None:
+        # A diferencia de `_cerrar_ronda()` (el botón), esto corre sin
+        # operador delante — nunca pide confirmación aunque queden bolas en
+        # el bombo: es exactamente la situación para la que existe
+        # `sin_reclamo="cerrar"`.
+        if self._ronda_actual is None:
+            return
+        ronda_cerrada = self._ronda_actual
+        try:
+            self._motor.cerrar_ronda(self._con, ronda_cerrada.id)
+        except ErrorBingo as error:
+            self._franja.mostrar_error(error)
+            return
+        self._franja.mostrar_info(
+            t("sorteo.aviso.cerrada_por_reclamo_vencido", nombre=ronda_cerrada.nombre)
+        )
+        if self._ventana_transmision is not None:
+            self._ventana_transmision.reclamo_vencido()
+        rondas = repo_ronda.listar_por_evento(self._con, self._evento.id)
+        siguiente = self._primera_ronda_pendiente(rondas)
+        self._cargar_lista_rondas(seleccionar_id=siguiente.id if siguiente else ronda_cerrada.id)
 
     def _detectados_pendientes(self) -> list[Ganador]:
         if self._ronda_actual is None:
@@ -842,6 +941,9 @@ class VistaSorteo(QWidget):
         self._puente.confirmar_ganador(ganador_id, decision)
 
     def _al_confirmar_ganador(self, ganador: Ganador) -> None:
+        # El operador ya resolvió el reclamo (a mano o por empate) —
+        # la cuenta regresiva de la tarea 4.24 dejó de tener sentido.
+        self._detener_cuenta_reclamo()
         if ganador.decision in ("unico", "reparto", "desempate_externo"):
             carton = repo_carton.obtener(self._con, ganador.carton_id)
             comprador = repo_comprador.obtener_por_carton(self._con, ganador.carton_id)

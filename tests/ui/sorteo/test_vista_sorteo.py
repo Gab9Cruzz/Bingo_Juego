@@ -9,7 +9,7 @@ from PySide6.QtCore import QObject, Signal
 
 from bingo import i18n
 from bingo.dominio.patron import mascara
-from bingo.persistencia import repo_evento, repo_ganador, repo_ronda
+from bingo.persistencia import repo_carton, repo_evento, repo_ganador, repo_ronda
 from bingo.servicios.servicio_sorteo import MotorSorteo
 from bingo.ui.sorteo import vista_sorteo as modulo_vista
 from bingo.ui.sorteo.vista_sorteo import VistaSorteo
@@ -490,3 +490,132 @@ def test_generar_respaldo_fallado_muestra_error_y_rehabilita(
 
     assert vista._boton_respaldo.isEnabled()  # noqa: SLF001
     assert not vista._franja.isHidden()  # noqa: SLF001
+
+
+# ── Cuenta regresiva de reclamo (tarea 4.24, alcance §6.2) ──────────────────
+
+
+def _preparar_ronda_con_ganador(con, evento, lote, *, tema=None):
+    from bingo.dominio.modelos import Evento
+
+    if tema is not None:
+        repo_evento.actualizar_tema(con, evento.id, tema.a_json())
+        evento = repo_evento.obtener(con, evento.id)
+        assert isinstance(evento, Evento)
+    patron = crear_patron(con, mascaras=[mascara([(0, 0)])])
+    carton = crear_carton(con, evento.id, lote.id, semilla=1, estado="vendido")
+    crear_comprador(con, carton.id)
+    ronda = crear_ronda(con, evento.id, patron.id)
+    numero_ganador = _numero_de_la_esquina(carton)
+    return evento, ronda, numero_ganador
+
+
+def test_detectar_ganador_inicia_la_cuenta_regresiva(
+    qapp, con: sqlite3.Connection, evento_creado, lote_creado
+) -> None:
+    """El tema por defecto trae `segundos_reclamo=60` (decisión de la tarea
+    4.24)."""
+    i18n.cargar("es")
+    evento, _ronda, numero_ganador = _preparar_ronda_con_ganador(con, evento_creado, lote_creado)
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento, espacio)
+    vista._iniciar_ronda()  # noqa: SLF001
+
+    for _ in range(numero_ganador):
+        vista._al_pulsar_extraer()  # noqa: SLF001
+
+    assert vista._temporizador_reclamo.isActive()  # noqa: SLF001
+    assert vista._segundos_restantes_reclamo == 60  # noqa: SLF001
+    assert not vista._etiqueta_cuenta_reclamo.isHidden()  # noqa: SLF001
+
+
+def test_segundos_reclamo_cero_no_arranca_temporizador(
+    qapp, con: sqlite3.Connection, evento_creado, lote_creado
+) -> None:
+    from bingo.dominio.tema import ConfigJuego, TemaDashboard
+
+    i18n.cargar("es")
+    tema = TemaDashboard(juego=ConfigJuego(segundos_reclamo=0))
+    evento, _ronda, numero_ganador = _preparar_ronda_con_ganador(
+        con, evento_creado, lote_creado, tema=tema
+    )
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento, espacio)
+    vista._iniciar_ronda()  # noqa: SLF001
+
+    for _ in range(numero_ganador):
+        vista._al_pulsar_extraer()  # noqa: SLF001
+
+    assert not vista._temporizador_reclamo.isActive()  # noqa: SLF001
+    assert vista._etiqueta_cuenta_reclamo.isHidden()  # noqa: SLF001
+
+
+def test_registrar_reclamo_detiene_la_cuenta_regresiva(
+    qapp, con: sqlite3.Connection, evento_creado, lote_creado
+) -> None:
+    i18n.cargar("es")
+    evento, _ronda, numero_ganador = _preparar_ronda_con_ganador(con, evento_creado, lote_creado)
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento, espacio)
+    vista._iniciar_ronda()  # noqa: SLF001
+    for _ in range(numero_ganador):
+        vista._al_pulsar_extraer()  # noqa: SLF001
+    assert vista._temporizador_reclamo.isActive()  # noqa: SLF001
+
+    carton = repo_carton.obtener(
+        con, repo_ganador.listar_por_ronda(con, vista._ronda_actual.id)[0].carton_id
+    )  # noqa: SLF001
+    vista._campo_codigo.setText(carton.codigo)  # noqa: SLF001
+    vista._validar_reclamo(registrar=True)  # noqa: SLF001
+
+    assert not vista._temporizador_reclamo.isActive()  # noqa: SLF001
+    assert vista._segundos_restantes_reclamo is None  # noqa: SLF001
+
+
+def test_tick_agota_cuenta_y_avisa_reclamo_vencido_sin_cerrar(
+    qapp, con: sqlite3.Connection, evento_creado, lote_creado
+) -> None:
+    from bingo.dominio.tema import ConfigJuego, TemaDashboard
+
+    i18n.cargar("es")
+    tema = TemaDashboard(juego=ConfigJuego(segundos_reclamo=2, sin_reclamo="continuar"))
+    evento, ronda, numero_ganador = _preparar_ronda_con_ganador(
+        con, evento_creado, lote_creado, tema=tema
+    )
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento, espacio)
+    vista._iniciar_ronda()  # noqa: SLF001
+    for _ in range(numero_ganador):
+        vista._al_pulsar_extraer()  # noqa: SLF001
+
+    vista._tick_reclamo()  # noqa: SLF001 — 2 -> 1
+    assert vista._temporizador_reclamo.isActive()  # noqa: SLF001
+    vista._tick_reclamo()  # noqa: SLF001 — 1 -> 0, agota
+
+    assert not vista._temporizador_reclamo.isActive()  # noqa: SLF001
+    assert repo_ronda.obtener(con, ronda.id).estado == "en_curso"  # no se cerró sola
+    assert vista._etiqueta_cuenta_reclamo.isHidden()  # noqa: SLF001
+
+
+def test_agotar_cuenta_con_sin_reclamo_cerrar_cierra_la_ronda_sola(
+    qapp, con: sqlite3.Connection, evento_creado, lote_creado
+) -> None:
+    """Sin operador delante de la cuenta atrás, `sin_reclamo="cerrar"`
+    cierra directo — nunca pide la confirmación de `_cerrar_ronda()` (el
+    botón manual), que se quedaría esperando un clic que puede no llegar."""
+    from bingo.dominio.tema import ConfigJuego, TemaDashboard
+
+    i18n.cargar("es")
+    tema = TemaDashboard(juego=ConfigJuego(segundos_reclamo=1, sin_reclamo="cerrar"))
+    evento, ronda, numero_ganador = _preparar_ronda_con_ganador(
+        con, evento_creado, lote_creado, tema=tema
+    )
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento, espacio)
+    vista._iniciar_ronda()  # noqa: SLF001
+    for _ in range(numero_ganador):
+        vista._al_pulsar_extraer()  # noqa: SLF001
+
+    vista._tick_reclamo()  # noqa: SLF001 — 1 -> 0, agota y cierra
+
+    assert repo_ronda.obtener(con, ronda.id).estado == "cerrada"
