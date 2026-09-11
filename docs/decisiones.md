@@ -350,3 +350,20 @@ el plan completo:
   `ErrorValidacion` (hallazgo C4).** `validar_evento_listo` marca "sin
   vendidos" como aviso no bloqueante a propósito (se vende en la puerta),
   pero arrancar un sorteo donde nadie puede ganar no es un caso de uso.
+- **Cierre del evento (tarea 4.13) y respaldo manual (parte de UI de la
+  tarea 4.12 que había quedado sin escribir) viven los dos en
+  `ui/sorteo/vista_sorteo.py`, junto al selector de rondas.** "Finalizar
+  evento" solo se habilita con **todas** las rondas `cerrada` (el mismo
+  criterio de `servicio_eventos.finalizar_evento`, comprobado dos veces —
+  una en la UI para no ofrecer un botón que va a fallar, otra en el
+  servicio porque nada garantiza que la UI corra primero); tras finalizar,
+  ofrece generar el reporte del evento y un respaldo, **nunca los obliga**:
+  que uno de los dos falle no debe deshacer una finalización ya válida.
+- **`_boton_respaldo` ("Generar respaldo ahora") corre
+  `servicio_respaldos.exportar` en una `Tarea` (`QThread`), con
+  `QProgressDialog` y cancelación cooperativa — se deshabilita con el
+  motivo (tooltip) mientras `EspacioEvento.hay_ronda_viva()` sea cierto
+  (hallazgo E-1: en_curso **o** pausada, a diferencia del bloqueo de venta
+  de 4.23 que a propósito solo mira en_curso).** Recordatorio (franja no
+  modal con acción, nunca modal ni siquiera fuera de `modo_vivo`): al
+  iniciar la PRIMERA ronda del evento, y al finalizar el evento.

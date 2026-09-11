@@ -22,6 +22,7 @@ recibe `motor_sorteo` por constructor y solo lo envuelve en un
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt, QTimer
@@ -29,12 +30,14 @@ from PySide6.QtGui import QGuiApplication, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QFileDialog,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QProgressDialog,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -50,17 +53,26 @@ from bingo.persistencia import (
     repo_auditoria,
     repo_carton,
     repo_comprador,
+    repo_evento,
     repo_extraccion,
     repo_ganador,
     repo_patron,
     repo_ronda,
 )
-from bingo.servicios import servicio_actas, servicio_ganadores, servicio_rondas
+from bingo.servicios import (
+    servicio_actas,
+    servicio_conciliacion,
+    servicio_eventos,
+    servicio_ganadores,
+    servicio_respaldos,
+    servicio_rondas,
+)
 from bingo.ui import sonido
 from bingo.ui.atajos import ATAJOS
 from bingo.ui.dialogos import FranjaError, confirmar
 from bingo.ui.sorteo.dialogo_empate import DialogoEmpate
 from bingo.ui.sorteo.puente_sorteo import PuenteSorteo
+from bingo.ui.tarea import Tarea
 from bingo.ui.transmision.pantallas import elegir_pantalla
 from bingo.ui.transmision.ventana_transmision import VentanaTransmision
 from bingo.ui.widgets.cuadricula_carton import CuadriculaCarton
@@ -115,6 +127,12 @@ class VistaSorteo(QWidget):
         self._boton_generar_acta.clicked.connect(self._generar_acta)
         self._boton_verificar_acta = QPushButton()
         self._boton_verificar_acta.clicked.connect(self._verificar_acta)
+        self._boton_respaldo = QPushButton()
+        self._boton_respaldo.clicked.connect(self._generar_respaldo)
+        self._tarea_respaldo: Tarea | None = None
+        self._dialogo_progreso_respaldo: QProgressDialog | None = None
+        self._boton_finalizar_evento = QPushButton()
+        self._boton_finalizar_evento.clicked.connect(self._finalizar_evento)
 
         # -- Zona A ----------------------------------------------------------
         self._etiqueta_numero = QLabel("—")
@@ -230,6 +248,8 @@ class VistaSorteo(QWidget):
         cabecera.addWidget(self._boton_generar_acta)
         cabecera.addWidget(self._boton_verificar_acta)
         cabecera.addStretch()
+        cabecera.addWidget(self._boton_respaldo)
+        cabecera.addWidget(self._boton_finalizar_evento)
 
         distribucion = QVBoxLayout(self)
         distribucion.addWidget(self._franja)
@@ -344,6 +364,8 @@ class VistaSorteo(QWidget):
         "cerrar" y "reabrir" no duplican la lógica de qué ronda mostrar
         después."""
         rondas = repo_ronda.listar_por_evento(self._con, self._evento.id)
+        self._actualizar_boton_finalizar_evento(rondas)
+        self._actualizar_boton_respaldo()
         self._actualizando_selector = True
         try:
             self._selector_ronda.clear()
@@ -435,18 +457,48 @@ class VistaSorteo(QWidget):
             estado == "cerrada" and self._ronda_actual is not None
         )
 
+    def _actualizar_boton_finalizar_evento(self, rondas: list) -> None:
+        """Tarea 4.13: solo tiene sentido cuando el evento tiene al menos una
+        ronda y **todas** están `cerrada` (`servicio_eventos.finalizar_evento`
+        exige exactamente eso); desaparece si el evento ya está `finalizado`,
+        para que no se pueda pulsar dos veces."""
+        ya_finalizado = self._evento.estado == "finalizado"
+        self._boton_finalizar_evento.setVisible(not ya_finalizado)
+        todas_cerradas = bool(rondas) and all(r.estado == "cerrada" for r in rondas)
+        self._boton_finalizar_evento.setEnabled(todas_cerradas)
+
+    def _actualizar_boton_respaldo(self) -> None:
+        # Hallazgo E-1 (tarea 4.12): la API de respaldo en línea de SQLite
+        # reinicia la copia si la base cambia a mitad — bloqueado con
+        # `en_curso` **o** `pausada` (a diferencia del bloqueo de venta de
+        # 4.23, que a propósito solo mira `en_curso`).
+        hay_ronda_viva = self._espacio.hay_ronda_viva()
+        self._boton_respaldo.setEnabled(not hay_ronda_viva and self._tarea_respaldo is None)
+        self._boton_respaldo.setToolTip(
+            t("sorteo.respaldo.bloqueado_tooltip") if hay_ronda_viva else ""
+        )
+
     # -- ciclo de vida de la ronda -------------------------------------------
 
     def _iniciar_ronda(self) -> None:
         if self._ronda_actual is None:
             return
+        ronda_iniciada = self._ronda_actual
         try:
-            self._motor.iniciar_ronda(self._con, self._ronda_actual.id)
+            self._motor.iniciar_ronda(self._con, ronda_iniciada.id)
         except ErrorBingo as error:
             self._franja.mostrar_error(error)
             return
         self._puente.establecer_modo_automatico(False)
-        self._cargar_lista_rondas(seleccionar_id=self._ronda_actual.id)
+        self._cargar_lista_rondas(seleccionar_id=ronda_iniciada.id)
+        # Recordatorio de respaldo (tarea 4.12/4.13): solo al iniciar la
+        # PRIMERA ronda del evento — es el instante en que un equipo único
+        # empieza a acumular una noche entera que solo vive en un disco.
+        rondas = repo_ronda.listar_por_evento(self._con, self._evento.id)
+        if rondas and rondas[0].id == ronda_iniciada.id:
+            self._franja.mostrar(
+                t("sorteo.recordatorio.respaldo"), self._generar_respaldo, nivel="info"
+            )
 
     def _pausar_o_reanudar(self) -> None:
         if self._ronda_actual is None:
@@ -556,6 +608,143 @@ class VistaSorteo(QWidget):
             self._franja.mostrar(t("sorteo.acta.no_coincide"), nivel="error")
         else:
             self._franja.mostrar_info(t("sorteo.acta.sin_generar"))
+
+    # -- cierre del evento (contrato §5.9, tarea 4.13) -----------------------
+
+    def _finalizar_evento(self) -> None:
+        if not confirmar(
+            self, t("sorteo.confirmar_finalizar.titulo"), t("sorteo.confirmar_finalizar.mensaje")
+        ):
+            return
+        try:
+            servicio_eventos.finalizar_evento(self._con, self._evento.id)
+        except ErrorBingo as error:
+            self._franja.mostrar_error(error)
+            return
+        actualizado = repo_evento.obtener(self._con, self._evento.id)
+        if actualizado is not None:
+            self._evento = actualizado
+        self._franja.mostrar_exito(t("sorteo.exito.evento_finalizado"))
+        self._cargar_lista_rondas(
+            seleccionar_id=self._ronda_actual.id if self._ronda_actual is not None else None
+        )
+
+        # A partir de aquí solo se ofrece, nunca se obliga (contrato §5.9):
+        # que un reporte o un respaldo fallen no debe deshacer una
+        # finalización ya válida.
+        if confirmar(
+            self,
+            t("sorteo.confirmar_generar_reporte.titulo"),
+            t("sorteo.confirmar_generar_reporte.mensaje"),
+        ):
+            self._generar_reporte_evento()
+        if confirmar(
+            self,
+            t("sorteo.confirmar_generar_respaldo.titulo"),
+            t("sorteo.confirmar_generar_respaldo.mensaje"),
+        ):
+            self._generar_respaldo()
+
+        if self._ventana_transmision is not None:
+            self._ventana_transmision.finalizar_evento()
+
+    def _textos_reporte_evento(self) -> dict[str, str]:
+        claves_etiqueta = (
+            "generados",
+            "impresos",
+            "entregados",
+            "vendidos",
+            "anulados",
+            "total_cartones",
+            "compradores_registrados",
+            "compradores_provisionales",
+            "recaudacion_teorica",
+            "recaudado_real",
+            "diferencia",
+        )
+        claves_columna = (
+            "codigo",
+            "estado",
+            "comprador",
+            "telefono",
+            "cedula",
+            "correo",
+            "ronda",
+            "premio",
+            "decision",
+        )
+        textos = {f"etiqueta_{c}": t(f"conciliacion.etiqueta.{c}") for c in claves_etiqueta}
+        textos.update({f"columna_{c}": t(f"conciliacion.columna.{c}") for c in claves_columna})
+        textos["hoja_resumen"] = t("conciliacion.hoja_resumen")
+        textos["hoja_detalle"] = t("conciliacion.hoja_detalle")
+        textos["hoja_rondas"] = t("conciliacion.hoja_rondas")
+        textos["advertencia_discrepancia"] = t("conciliacion.advertencia_discrepancia")
+        return textos
+
+    def _generar_reporte_evento(self) -> None:
+        ruta, _filtro = QFileDialog.getSaveFileName(
+            self, "", f"reporte-{self._evento.nombre}.xlsx", "Excel (*.xlsx)"
+        )
+        if not ruta:
+            return
+        try:
+            servicio_conciliacion.generar_reporte_evento_excel(
+                self._con,
+                self._evento.id,
+                Path(ruta),
+                self._textos_reporte_evento(),
+                idioma=i18n.idioma_actual(),
+            )
+        except ErrorBingo as error:
+            self._franja.mostrar_error(error)
+            return
+        self._franja.mostrar_exito(t("sorteo.exito.reporte_generado", ruta=ruta))
+
+    # -- respaldo manual (contrato §5.10, tarea 4.12/4.13) --------------------
+
+    def _generar_respaldo(self) -> None:
+        if self._tarea_respaldo is not None:
+            return
+        self._boton_respaldo.setEnabled(False)
+        self._dialogo_progreso_respaldo = QProgressDialog(
+            t("sorteo.respaldo.generando"), t("comun.cancelar"), 0, 100, self
+        )
+        self._dialogo_progreso_respaldo.setWindowModality(Qt.WindowModality.WindowModal)
+        self._dialogo_progreso_respaldo.setMinimumDuration(0)
+        self._dialogo_progreso_respaldo.canceled.connect(self._cancelar_respaldo)
+
+        self._tarea_respaldo = Tarea(servicio_respaldos.exportar, self._evento.id)
+        self._tarea_respaldo.progreso.connect(self._al_progresar_respaldo)
+        self._tarea_respaldo.terminado.connect(self._respaldo_terminado)
+        self._tarea_respaldo.fallado.connect(self._respaldo_fallado)
+        self._tarea_respaldo.start()
+
+    def _cancelar_respaldo(self) -> None:
+        if self._tarea_respaldo is not None:
+            self._tarea_respaldo.cancelar()
+
+    def _al_progresar_respaldo(self, hecho: int, total: int) -> None:
+        if self._dialogo_progreso_respaldo is not None:
+            self._dialogo_progreso_respaldo.setRange(0, max(total, 1))
+            self._dialogo_progreso_respaldo.setValue(hecho)
+
+    def _cerrar_dialogo_respaldo(self) -> None:
+        if self._dialogo_progreso_respaldo is not None:
+            self._dialogo_progreso_respaldo.close()
+            self._dialogo_progreso_respaldo = None
+        self._tarea_respaldo = None
+        self._actualizar_boton_respaldo()
+
+    def _respaldo_terminado(self, resultado: object) -> None:
+        self._cerrar_dialogo_respaldo()
+        if resultado is None:
+            self._franja.mostrar_info(t("sorteo.aviso.respaldo_cancelado"))
+            return
+        self._franja.mostrar_exito(t("sorteo.exito.respaldo_generado", ruta=str(resultado)))
+
+    def _respaldo_fallado(self, error: ErrorBingo) -> None:
+        self._cerrar_dialogo_respaldo()
+        self._franja.mostrar_error(error)
 
     # -- extracción -----------------------------------------------------------
 
@@ -798,6 +987,8 @@ class VistaSorteo(QWidget):
         self._boton_reabrir_ronda.setText(t("sorteo.accion.reabrir_ronda"))
         self._boton_generar_acta.setText(t("sorteo.accion.generar_acta"))
         self._boton_verificar_acta.setText(t("sorteo.accion.verificar_acta"))
+        self._boton_respaldo.setText(t("sorteo.accion.generar_respaldo"))
+        self._boton_finalizar_evento.setText(t("sorteo.accion.finalizar_evento"))
         self._etiqueta_ronda.setText(t("sorteo.cabecera.ronda"))
         self._campo_codigo.setPlaceholderText(t("sorteo.buscador.placeholder"))
         self._boton_consultar.setText(t("sorteo.accion.consultar"))

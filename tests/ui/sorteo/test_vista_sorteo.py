@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Sequence
+from pathlib import Path
 
 from factorias import crear_carton, crear_comprador, crear_patron, crear_ronda
+from PySide6.QtCore import QObject, Signal
 
 from bingo import i18n
 from bingo.dominio.patron import mascara
-from bingo.persistencia import repo_ganador, repo_ronda
+from bingo.persistencia import repo_evento, repo_ganador, repo_ronda
 from bingo.servicios.servicio_sorteo import MotorSorteo
+from bingo.ui.sorteo import vista_sorteo as modulo_vista
 from bingo.ui.sorteo.vista_sorteo import VistaSorteo
 
 
@@ -39,6 +42,13 @@ class _EspacioEventoFalso:
     def desactivar_modo_vivo(self) -> None:
         self.modo_vivo = False
         self.desactivadas += 1
+
+    def hay_ronda_viva(self) -> bool:
+        # Aproximación suficiente para esta prueba: el `EspacioEvento` real
+        # mira la base (`en_curso` o `pausada`, decisión DU-11); aquí no hay
+        # base propia que consultar, así que se delega en lo que el motor
+        # de sorteo ya sabe en memoria (tarea 4.13, bloqueo de respaldo).
+        return self.motor_sorteo.hay_ronda_en_juego
 
 
 def _numero_de_la_esquina(carton) -> int:
@@ -302,3 +312,181 @@ def test_modo_vivo_delega_en_espacio_evento(
 
     vista._boton_modo_vivo.setChecked(False)  # noqa: SLF001
     assert espacio.desactivadas == 1
+
+
+# ── Cierre del evento (tarea 4.13) ──────────────────────────────────────────
+
+
+def test_boton_finalizar_evento_solo_habilitado_con_todas_cerradas(
+    qapp, con: sqlite3.Connection, evento_creado
+) -> None:
+    i18n.cargar("es")
+    repo_evento.actualizar_estado(con, evento_creado.id, "en_curso")
+    patron = crear_patron(con, mascaras=[mascara([(0, 0)])])
+    ronda_1 = crear_ronda(con, evento_creado.id, patron.id, nombre="Ronda 1", orden=1)
+    crear_ronda(con, evento_creado.id, patron.id, nombre="Ronda 2", orden=2)
+
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento_creado, espacio)
+    assert not vista._boton_finalizar_evento.isEnabled()  # noqa: SLF001
+
+    repo_ronda.actualizar_estado(con, ronda_1.id, "cerrada")
+    vista._cargar_lista_rondas()  # noqa: SLF001
+    assert not vista._boton_finalizar_evento.isEnabled()  # noqa: SLF001 — falta la 2
+
+
+def test_finalizar_evento_llama_al_servicio_y_oculta_el_boton(
+    qapp, con: sqlite3.Connection, evento_creado, monkeypatch
+) -> None:
+    i18n.cargar("es")
+    repo_evento.actualizar_estado(con, evento_creado.id, "en_curso")
+    patron = crear_patron(con, mascaras=[mascara([(0, 0)])])
+    crear_ronda(con, evento_creado.id, patron.id, estado="cerrada")
+
+    # Confirma SOLO el primer diálogo (finalizar) — los siguientes (ofrecer
+    # reporte, ofrecer respaldo) se rechazan para no disparar un
+    # `QFileDialog` ni una `Tarea` real desde esta prueba.
+    llamadas = {"n": 0}
+
+    def _confirmar_fake(*_a: object, **_k: object) -> bool:
+        llamadas["n"] += 1
+        return llamadas["n"] == 1
+
+    monkeypatch.setattr("bingo.ui.sorteo.vista_sorteo.confirmar", _confirmar_fake)
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento_creado, espacio)
+    assert vista._boton_finalizar_evento.isEnabled()  # noqa: SLF001
+
+    vista._finalizar_evento()  # noqa: SLF001
+
+    assert repo_evento.obtener(con, evento_creado.id).estado == "finalizado"
+    assert vista._evento.estado == "finalizado"  # noqa: SLF001
+    assert vista._boton_finalizar_evento.isHidden()  # noqa: SLF001
+    assert llamadas["n"] == 3  # finalizar + ofrecer reporte + ofrecer respaldo
+
+
+def test_finalizar_evento_con_rondas_sin_cerrar_muestra_error(
+    qapp, con: sqlite3.Connection, evento_creado, monkeypatch
+) -> None:
+    """El botón ya lo impide, pero el servicio es la fuente de verdad
+    (hallazgo defensivo: nada garantiza que `_actualizar_boton_finalizar_evento`
+    corra antes de un clic en cola)."""
+    i18n.cargar("es")
+    repo_evento.actualizar_estado(con, evento_creado.id, "en_curso")
+    patron = crear_patron(con, mascaras=[mascara([(0, 0)])])
+    crear_ronda(con, evento_creado.id, patron.id)  # pendiente, nunca cerrada
+
+    monkeypatch.setattr("bingo.ui.sorteo.vista_sorteo.confirmar", lambda *a, **k: True)
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento_creado, espacio)
+
+    vista._finalizar_evento()  # noqa: SLF001
+
+    assert repo_evento.obtener(con, evento_creado.id).estado == "en_curso"
+    assert not vista._franja.isHidden()  # noqa: SLF001
+
+
+# ── Respaldo manual (tarea 4.12/4.13) ───────────────────────────────────────
+
+
+class _TareaFalsa(QObject):
+    """Mismo convenio que `tests/ui/test_vista_cartones.py::_TareaFalsa`:
+    mismas señales que `ui/tarea.py::Tarea`, sin `QThread` real — la prueba
+    controla a mano cuándo "termina"."""
+
+    progreso = Signal(int, int)
+    terminado = Signal(object)
+    fallado = Signal(object)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.iniciada = False
+        self.cancelada = False
+
+    def start(self) -> None:
+        self.iniciada = True
+
+    def cancelar(self) -> None:
+        self.cancelada = True
+
+
+def test_boton_respaldo_deshabilitado_con_ronda_viva(
+    qapp, con: sqlite3.Connection, evento_creado, lote_creado
+) -> None:
+    i18n.cargar("es")
+    patron = crear_patron(con, mascaras=[mascara([(0, 0)])])
+    carton = crear_carton(con, evento_creado.id, lote_creado.id, semilla=1, estado="vendido")
+    crear_comprador(con, carton.id)
+    crear_ronda(con, evento_creado.id, patron.id)
+
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento_creado, espacio)
+    assert vista._boton_respaldo.isEnabled()  # noqa: SLF001
+
+    vista._iniciar_ronda()  # noqa: SLF001
+
+    assert not vista._boton_respaldo.isEnabled()  # noqa: SLF001
+
+
+def test_generar_respaldo_exitoso_rehabilita_el_boton_y_avisa(
+    qapp, con: sqlite3.Connection, evento_creado, monkeypatch
+) -> None:
+    i18n.cargar("es")
+    patron = crear_patron(con)
+    crear_ronda(con, evento_creado.id, patron.id)
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento_creado, espacio)
+
+    tarea = _TareaFalsa()
+    monkeypatch.setattr(modulo_vista, "Tarea", lambda *_a, **_k: tarea)
+    vista._generar_respaldo()  # noqa: SLF001
+
+    assert tarea.iniciada
+    assert not vista._boton_respaldo.isEnabled()  # noqa: SLF001
+
+    tarea.terminado.emit(Path("respaldo-evento.zip"))
+
+    assert vista._boton_respaldo.isEnabled()  # noqa: SLF001
+    assert "respaldo-evento.zip" in vista._franja._etiqueta.text()  # noqa: SLF001
+
+
+def test_generar_respaldo_cancelado_muestra_aviso_sin_ruta(
+    qapp, con: sqlite3.Connection, evento_creado, monkeypatch
+) -> None:
+    """`servicio_respaldos.exportar` devuelve `None` cuando se cancela a
+    mitad — sin dejar ningún `.zip` parcial (decisión del propio servicio)."""
+    i18n.cargar("es")
+    patron = crear_patron(con)
+    crear_ronda(con, evento_creado.id, patron.id)
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento_creado, espacio)
+
+    tarea = _TareaFalsa()
+    monkeypatch.setattr(modulo_vista, "Tarea", lambda *_a, **_k: tarea)
+    vista._generar_respaldo()  # noqa: SLF001
+
+    tarea.terminado.emit(None)
+
+    assert vista._boton_respaldo.isEnabled()  # noqa: SLF001
+    assert vista._franja._etiqueta.text() == "Respaldo cancelado"  # noqa: SLF001
+
+
+def test_generar_respaldo_fallado_muestra_error_y_rehabilita(
+    qapp, con: sqlite3.Connection, evento_creado, monkeypatch
+) -> None:
+    from bingo.utilidades.errores import ErrorValidacion
+
+    i18n.cargar("es")
+    patron = crear_patron(con)
+    crear_ronda(con, evento_creado.id, patron.id)
+    espacio = _EspacioEventoFalso()
+    vista = VistaSorteo(con, evento_creado, espacio)
+
+    tarea = _TareaFalsa()
+    monkeypatch.setattr(modulo_vista, "Tarea", lambda *_a, **_k: tarea)
+    vista._generar_respaldo()  # noqa: SLF001
+
+    tarea.fallado.emit(ErrorValidacion("respaldo.error.ronda_en_curso"))
+
+    assert vista._boton_respaldo.isEnabled()  # noqa: SLF001
+    assert not vista._franja.isHidden()  # noqa: SLF001
