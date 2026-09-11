@@ -430,3 +430,18 @@ el plan completo:
   `BotonColor` nunca necesita saber mostrar "transparente": conserva
   siempre el último hexadecimal elegido, para no perderlo si se destilda
   más tarde.
+- **Borrado de datos de compradores, alcanzable desde la interfaz (tarea
+  4.25, corrección C4, LOPDP).** `servicio_compradores.
+  eliminar_todos_del_evento` existía desde la fase 4 y ningún archivo de
+  `ui/` lo llamaba — mientras eso siguiera así, la política de retención
+  de `TODOS.md` P1 era inejecutable por diseño aunque se decidiera hoy
+  mismo. Botón en la sección Compradores, deshabilitado salvo con el
+  evento `finalizado`, con confirmación escrita vía `QInputDialog.getText`
+  comparada byte a byte contra `evento.nombre` (no un `confirmar()` de
+  Sí/No: es la única operación de la fase que borra datos personales sin
+  vuelta atrás, y merece más fricción que cerrar una ronda). El estado del
+  botón se recalcula en cada `cargar()` contra la base (`repo_evento.
+  obtener`), no contra el objeto `Evento` en memoria de la vista — el
+  mismo motivo por el que 4.13 refresca `self._evento` tras finalizar:
+  nada garantiza que la sección Compradores se reabra después de que
+  Sorteo finalice el evento.

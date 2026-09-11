@@ -170,3 +170,87 @@ def test_anular_venta_pide_confirmacion(qapp, con, bingo_home, monkeypatch) -> N
     vista._anular_seleccionado()
     assert repo_comprador.contar_por_evento(con, evento.id) == 0
     assert repo_carton.obtener(con, cartones[0].id).estado == "impreso"
+
+
+# ── Borrado de datos de compradores (tarea 4.25, LOPDP) ─────────────────────
+
+
+def test_boton_eliminar_datos_deshabilitado_si_evento_no_finalizado(qapp, con, bingo_home) -> None:
+    con, evento, _cartones = _preparar(con)
+    vista = VistaCompradores(con, evento)
+    assert not vista._boton_eliminar_datos.isEnabled()
+
+
+def test_boton_eliminar_datos_habilitado_con_evento_finalizado(qapp, con, bingo_home) -> None:
+    from bingo.persistencia import repo_evento
+
+    con, evento, _cartones = _preparar(con)
+    repo_evento.actualizar_estado(con, evento.id, "finalizado")
+    vista = VistaCompradores(con, evento)
+    assert vista._boton_eliminar_datos.isEnabled()
+
+
+def test_eliminar_datos_requiere_escribir_el_nombre_exacto(
+    qapp, con, bingo_home, monkeypatch
+) -> None:
+    from bingo.persistencia import repo_evento
+
+    con, evento, cartones = _preparar(con)
+    repo_evento.actualizar_estado(con, evento.id, "finalizado")
+    from bingo.servicios import servicio_compradores
+
+    servicio_compradores.registrar_manual(
+        con, evento.id, cartones[0].codigo, Comprador(carton_id=0, nombre="Juan")
+    )
+    vista = VistaCompradores(con, evento)
+
+    monkeypatch.setattr(
+        modulo_vista.QInputDialog, "getText", lambda *_a, **_k: ("no coincide", True)
+    )
+    vista._eliminar_datos_compradores()
+    assert repo_comprador.contar_por_evento(con, evento.id) == 1
+
+    monkeypatch.setattr(
+        modulo_vista.QInputDialog, "getText", lambda *_a, **_k: (evento.nombre, True)
+    )
+    vista._eliminar_datos_compradores()
+    assert repo_comprador.contar_por_evento(con, evento.id) == 0
+
+
+def test_eliminar_datos_cancelado_no_borra_nada(qapp, con, bingo_home, monkeypatch) -> None:
+    from bingo.persistencia import repo_evento
+
+    con, evento, cartones = _preparar(con)
+    repo_evento.actualizar_estado(con, evento.id, "finalizado")
+    from bingo.servicios import servicio_compradores
+
+    servicio_compradores.registrar_manual(
+        con, evento.id, cartones[0].codigo, Comprador(carton_id=0, nombre="Juan")
+    )
+    vista = VistaCompradores(con, evento)
+
+    monkeypatch.setattr(modulo_vista.QInputDialog, "getText", lambda *_a, **_k: ("", False))
+    vista._eliminar_datos_compradores()
+
+    assert repo_comprador.contar_por_evento(con, evento.id) == 1
+
+
+def test_eliminar_datos_bloqueado_si_no_esta_finalizado_aunque_se_llame_directo(
+    qapp, con, bingo_home, monkeypatch
+) -> None:
+    """Defensivo (mismo criterio que 4.13 con "Finalizar evento"): el botón
+    ya lo impide, pero el método vuelve a comprobarlo por si acaso."""
+    con, evento, cartones = _preparar(con)
+    from bingo.servicios import servicio_compradores
+
+    servicio_compradores.registrar_manual(
+        con, evento.id, cartones[0].codigo, Comprador(carton_id=0, nombre="Juan")
+    )
+    vista = VistaCompradores(con, evento)
+
+    monkeypatch.setattr(
+        modulo_vista.QInputDialog, "getText", lambda *_a, **_k: (evento.nombre, True)
+    )
+    vista._eliminar_datos_compradores()
+
+    assert repo_comprador.contar_por_evento(con, evento.id) == 1

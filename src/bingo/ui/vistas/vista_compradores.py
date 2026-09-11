@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QHBoxLayout,
     QHeaderView,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -39,7 +40,7 @@ from PySide6.QtWidgets import (
 from bingo import i18n
 from bingo.dominio.modelos import Comprador, Evento
 from bingo.i18n import t
-from bingo.persistencia import repo_carton, repo_comprador
+from bingo.persistencia import repo_carton, repo_comprador, repo_evento
 from bingo.persistencia.conexion import abrir_conexion, cerrar_conexion
 from bingo.servicios import servicio_compradores, servicio_conciliacion
 from bingo.servicios.servicio_compradores import InformeImportacion, ResultadoImportacion
@@ -609,6 +610,15 @@ class VistaCompradores(QWidget):
         self._boton_anular = QPushButton()
         self._boton_anular.setEnabled(False)
         self._boton_anular.clicked.connect(self._anular_seleccionado)
+        # Tarea 4.25 (corrección C4, LOPDP): `servicio_compradores.
+        # eliminar_todos_del_evento` existía desde la fase 4 sin ningún
+        # botón que lo llamara — mientras eso siguiera así, la política de
+        # retención de `TODOS.md` P1 era inejecutable por diseño.
+        # Deshabilitado salvo con el evento `finalizado`: no tiene sentido
+        # borrar datos de compradores de un evento que todavía puede vender.
+        self._boton_eliminar_datos = QPushButton()
+        self._boton_eliminar_datos.setEnabled(False)
+        self._boton_eliminar_datos.clicked.connect(self._eliminar_datos_compradores)
         fila_acciones = QHBoxLayout()
         fila_acciones.addWidget(self._boton_exportar_plantilla)
         fila_acciones.addWidget(self._boton_importar)
@@ -616,6 +626,7 @@ class VistaCompradores(QWidget):
         fila_acciones.addWidget(self._boton_rango)
         fila_acciones.addWidget(self._boton_anular)
         fila_acciones.addStretch()
+        fila_acciones.addWidget(self._boton_eliminar_datos)
 
         # --- Búsqueda + tabla ---
         self._campo_busqueda = QLineEdit()
@@ -686,6 +697,11 @@ class VistaCompradores(QWidget):
         if conciliacion.discrepancia:
             self._franja.mostrar_info(t("conciliacion.advertencia_discrepancia"))
         self._seleccion_cambiada()
+
+        evento_actual = repo_evento.obtener(self._con, self._evento.id)
+        self._boton_eliminar_datos.setEnabled(
+            evento_actual is not None and evento_actual.estado == "finalizado"
+        )
 
     def _comprador_id_seleccionado(self) -> int | None:
         indices = (
@@ -836,6 +852,30 @@ class VistaCompradores(QWidget):
         self.cargar()
         self._franja.mostrar_exito(t("compradores.exito.anulado"))
 
+    # --- Borrado de datos (tarea 4.25, corrección C4, LOPDP) ---
+
+    def _eliminar_datos_compradores(self) -> None:
+        # Defensivo: el botón ya se deshabilita si no está `finalizado`,
+        # pero nada garantiza que este método corra después de ese refresco
+        # (mismo criterio que 4.13 con "Finalizar evento").
+        evento_actual = repo_evento.obtener(self._con, self._evento.id)
+        if evento_actual is None or evento_actual.estado != "finalizado":
+            return
+        texto, ok = QInputDialog.getText(
+            self,
+            t("compradores.eliminar_datos.confirmar.titulo"),
+            t("compradores.eliminar_datos.confirmar.mensaje", nombre=self._evento.nombre),
+        )
+        if not ok or texto != self._evento.nombre:
+            return
+        try:
+            eliminados = servicio_compradores.eliminar_todos_del_evento(self._con, self._evento.id)
+        except ErrorBingo as error:
+            self._franja.mostrar_error(error)
+            return
+        self.cargar()
+        self._franja.mostrar_exito(t("compradores.eliminar_datos.exito", cantidad=eliminados))
+
     # --- Venta por rango ---
 
     def _abrir_venta_por_rango(self) -> None:
@@ -913,6 +953,7 @@ class VistaCompradores(QWidget):
         self._boton_nuevo.setText(t("compradores.accion.nuevo"))
         self._boton_rango.setText(t("compradores.accion.venta_por_rango"))
         self._boton_anular.setText(t("compradores.accion.anular_venta"))
+        self._boton_eliminar_datos.setText(t("compradores.accion.eliminar_datos"))
         self._boton_exportar_pdf.setText(t("conciliacion.accion.exportar_pdf"))
         self._boton_exportar_excel.setText(t("conciliacion.accion.exportar_excel"))
         self._campo_busqueda.setPlaceholderText(t("compradores.buscar"))

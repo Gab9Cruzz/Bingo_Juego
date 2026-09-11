@@ -18,13 +18,18 @@ Formato: **qué** · por qué · esfuerzo (humano / CC) · prioridad · depende 
   prueba en un canal privado.
   Esfuerzo: 2 días / — · Depende de: nada.
 
-- **Política de retención de datos de compradores (LOPDP).**
-  El alcance §9 la deja pendiente. La fase 1 fija la forma de los datos que hará
-  fácil o difícil el borrado, y por defecto la fija en la dirección difícil (una
-  fila `comprador` por cartón, en una base global). Propuesta del alcance: se
-  conservan mientras dure el evento y hasta 30 días después, se entrega el reporte
-  a la organización y luego se eliminan.
-  Esfuerzo: M / S · Depende de: nada, pero cuanto antes se decida menos cuesta.
+- **Política de retención de datos de compradores (LOPDP).** El alcance §9
+  deja pendiente **cuándo** se borra (propuesta: mientras dure el evento y
+  hasta 30 días después). Eso sigue sin decidirse — es una decisión de
+  Gabriel, no de código. Lo que sí se resolvió (fase 5, tarea 4.25): el
+  **mecanismo para ejecutarla** ya existe y es alcanzable desde la
+  interfaz — botón "Eliminar datos de compradores" en la sección
+  Compradores, con confirmación escrita (teclear el nombre del evento) y
+  deshabilitado salvo con el evento `finalizado`
+  (`servicio_compradores.eliminar_todos_del_evento`, ya existía desde la
+  fase 4 pero ningún botón lo llamaba). Antes de esta tarea la política era
+  inejecutable por diseño aunque se decidiera hoy mismo.
+  Esfuerzo: S / S · Depende de: nada — falta decidir el plazo, no construir nada.
 
 ## P1 — spikes que de-riesgan las fases 3 y 5
 
